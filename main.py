@@ -51,14 +51,14 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await query.edit_message_text(text=f"Выбранно: {variant}")
 
-    if db.UserConversation.select().where(db.UserConversation.user_id == query.id):
-        cur_user = db.UserConversation.select().where(db.UserConversation.user_id == query.id).get()
+    if db.UserConversation.select().where(db.UserConversation.user_id == update.effective_user.id):
+        cur_user = db.UserConversation.select().where(db.UserConversation.user_id == update.effective_user.id).get()
         cur_user.scenario_name = variant
         cur_user.step_name = SCENARIOS[variant]['first_step']
         cur_user.save()
     else:
         new_user = db.UserConversation.create(
-            user_id=query.id,
+            user_id=update.effective_user.id,
             scenario_name=variant,
             step_name=SCENARIOS[variant]['first_step'],
             context={'messages': []}
@@ -67,9 +67,10 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def private_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     dispatch_dict = private_messages_handler(update=update, context=context)
-    text_list = dispatch_dict.items()
-    async for text in dispatch_dict['text_list']:
-        await context.bot.send_message(chat_id=dispatch_dict['receiver_id'], text=text)
+    if dispatch_dict:
+        if 'text_list' in dispatch_dict:
+            for text in dispatch_dict['text_list']:
+                await context.bot.send_message(chat_id=dispatch_dict['receiver_id'], text=text)
 
 
 if __name__ == '__main__':

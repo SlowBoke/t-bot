@@ -13,16 +13,17 @@ from telegram.ext import (filters, MessageHandler, ApplicationBuilder, ContextTy
                           CommandHandler, InlineQueryHandler, CallbackQueryHandler)
 
 
-async def admin_receiver(user_text, user_in_db, dispatch_dict):
-    if user_in_db.context['admin_id']:
+def admin_receiver(user_text, user_in_db, dispatch_dict):
+    if 'admin_id' in user_in_db.context:
         admin_id = user_in_db.context['admin_id']
-        dispatch_dict['messages'] = []
+        dispatch_dict['text_list'] = []
     else:
-        admins_ready_list = db.UserConversation.select().where(
+        admins_ready = db.UserConversation.select().where(
             db.UserConversation.scenario_name == 'Администратор' and
-            db.UserConversation.step_name is None
+            db.UserConversation.step_name == 'NULL'
         )
-        admin = admins_ready_list.sort(key=lambda args: random)[0]
+        # TODO: разобраться с числом админов
+        admin = admins_ready.get()  # _list.sort(key=lambda args: random())[0]
         admin_id = admin.user_id
         admin.step_name = SCENARIOS[admin.scenario_name]['first_step']
         admin.save()
@@ -32,7 +33,7 @@ async def admin_receiver(user_text, user_in_db, dispatch_dict):
         user_in_db.context['messages'] = []
         user_in_db.save()
 
-    dispatch_dict['messages'].append(user_text)
+    dispatch_dict['text_list'].append(user_text)
     dispatch_dict['receiver_id'] = admin_id
 
 

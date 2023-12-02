@@ -14,14 +14,14 @@ from telegram.ext import (filters, MessageHandler, ApplicationBuilder, ContextTy
                           CommandHandler, InlineQueryHandler, CallbackQueryHandler)
 
 
-async def private_messages_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+def private_messages_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     user_text = update.effective_message.text
 
     if db.UserConversation.select().where(db.UserConversation.user_id == user_id):
         user_in_db = db.UserConversation.select().where(db.UserConversation.user_id == user_id).get()
 
-        if user_in_db.scenario_name:
+        if user_in_db.scenario_name != 'NULL':
             return scenario_handler(user_text=user_text, user_in_db=user_in_db)
         else:
             user_in_db.context['messages'].append(update.effective_message.text)
@@ -30,14 +30,13 @@ async def private_messages_handler(update: Update, context: ContextTypes.DEFAULT
     else:
         new_user = db.UserConversation.create(
             user_id=user_id,
-            scenario_name=None,
-            step_name=None,
+            scenario_name='NULL',
+            step_name='NULL',
             context={'messages': [update.effective_message.text]}
         )
-    return None
 
 
-async def scenario_handler(user_text, user_in_db):
+def scenario_handler(user_text, user_in_db):
     scenario_name = user_in_db.scenario_name
     steps = SCENARIOS[scenario_name]['steps']
     step = steps[user_in_db.step_name]
@@ -46,8 +45,8 @@ async def scenario_handler(user_text, user_in_db):
     handler = getattr(scenario_handlers, step['handler'])
     handler(user_text=user_text, user_in_db=user_in_db, dispatch_dict=dispatch_dict)
 
-    if dispatch_dict['next_step']:
-        if step['next_step']:
+    if 'next_step' in dispatch_dict:
+        if 'next_step' in step:
             user_in_db.step_name = step['next_step']
         else:
             user_in_db.step_name = None
