@@ -3,7 +3,8 @@
 import peewee
 
 import db
-from settings import TOKEN
+from settings import TOKEN, SCENARIOS
+from private_message_handler import private_messages_handler
 
 from telegram import (Update, InlineQueryResultArticle, InputTextMessageContent,
                       InlineKeyboardButton, InlineKeyboardMarkup)
@@ -50,6 +51,26 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await query.edit_message_text(text=f"Выбранно: {variant}")
 
+    if db.UserConversation.select().where(db.UserConversation.user_id == query.id):
+        cur_user = db.UserConversation.select().where(db.UserConversation.user_id == query.id).get()
+        cur_user.scenario_name = variant
+        cur_user.step_name = SCENARIOS[variant]['first_step']
+        cur_user.save()
+    else:
+        new_user = db.UserConversation.create(
+            user_id=query.id,
+            scenario_name=variant,
+            step_name=SCENARIOS[variant]['first_step'],
+            context={'messages': []}
+        )
+
+
+async def private_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    dispatch_dict = private_messages_handler(update=update, context=context)
+    text_list = dispatch_dict.items()
+    async for text in dispatch_dict['text_list']:
+        await context.bot.send_message(chat_id=dispatch_dict['receiver_id'], text=text)
+
 
 if __name__ == '__main__':
     db_init()
@@ -59,9 +80,11 @@ if __name__ == '__main__':
     start_handler = CommandHandler('start', start)
     help_handler = CommandHandler('help', help)
     button_handler = CallbackQueryHandler(button)
+    private_message_handler = MessageHandler(filters.TEXT & (~filters.COMMAND), private_message)
 
     application.add_handler(start_handler)
     application.add_handler(help_handler)
     application.add_handler(button_handler)
+    application.add_handler(private_message_handler)
 
     application.run_polling()

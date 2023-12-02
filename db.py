@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
 import peewee
+from playhouse.sqlite_ext import JSONField
 
 database_proxy = peewee.Proxy()
 
@@ -16,13 +17,14 @@ class UserConversation(BaseModel):
     user_id = peewee.IntegerField(unique=True)
     scenario_name = peewee.CharField()
     step_name = peewee.CharField()
+    context = JSONField()
 
 
 class AdminLogin(BaseModel):
-    user_id = peewee.IntegerField(unique=True)
+    admin_name = peewee.CharField()
     login = peewee.CharField()
     password = peewee.CharField()
-    is_active = peewee.BooleanField()
+    user_id = peewee.IntegerField(unique=True)
 
 
 class GroupViolation(BaseModel):
