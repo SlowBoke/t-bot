@@ -4,7 +4,7 @@ import peewee
 
 import db
 from settings import TOKEN, SCENARIOS
-from private_message_handler import private_messages_handler
+from private_message_handler import private_messages_handler, start_scenario
 
 from telegram import (Update, InlineQueryResultArticle, InputTextMessageContent,
                       InlineKeyboardButton, InlineKeyboardMarkup)
@@ -27,7 +27,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     keyboard = [
         [InlineKeyboardButton("Задать вопрос", callback_data='Задать вопрос')],
-        [InlineKeyboardButton("Авторизоваться (админ)", callback_data='Авторизоваться')],
+        [InlineKeyboardButton("Авторизоваться (админ)", callback_data='Авторизация')],
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
 
@@ -47,22 +47,16 @@ async def help(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    variant = query.data
+    scenario_name = query.data
+    user_id = update.effective_user.id
 
-    await query.edit_message_text(text=f"Выбранно: {variant}")
+    await query.edit_message_text(text=f"Выбранно: {scenario_name}")
 
-    if db.UserConversation.select().where(db.UserConversation.user_id == update.effective_user.id):
-        cur_user = db.UserConversation.select().where(db.UserConversation.user_id == update.effective_user.id).get()
-        cur_user.scenario_name = variant
-        cur_user.step_name = SCENARIOS[variant]['first_step']
-        cur_user.save()
-    else:
-        new_user = db.UserConversation.create(
-            user_id=update.effective_user.id,
-            scenario_name=variant,
-            step_name=SCENARIOS[variant]['first_step'],
-            context={'messages': []}
-        )
+    dispatch_dict = start_scenario(user_id=user_id, scenario_name=scenario_name)
+    if dispatch_dict:
+        if 'text_list' in dispatch_dict:
+            for text in dispatch_dict['text_list']:
+                await context.bot.send_message(chat_id=dispatch_dict['receiver_id'], text=text)
 
 
 async def private_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -71,6 +65,12 @@ async def private_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if 'text_list' in dispatch_dict:
             for text in dispatch_dict['text_list']:
                 await context.bot.send_message(chat_id=dispatch_dict['receiver_id'], text=text)
+
+
+# async def dispatch_dict_handler(dispatch_dict, context: ContextTypes.DEFAULT_TYPE):
+#     if 'text_list' in dispatch_dict:
+#         for text in dispatch_dict['text_list']:
+#             await context.bot.send_message(chat_id=dispatch_dict['receiver_id'], text=text)
 
 
 if __name__ == '__main__':

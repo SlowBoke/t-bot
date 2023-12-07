@@ -22,7 +22,7 @@ def private_messages_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
         user_in_db = db.UserConversation.select().where(db.UserConversation.user_id == user_id).get()
 
         if user_in_db.scenario_name != 'NULL':
-            return scenario_handler(user_text=user_text, user_in_db=user_in_db)
+            return continue_scenario(user_text=user_text, user_in_db=user_in_db)
         else:
             user_in_db.context['messages'].append(update.effective_message.text)
             user_in_db.save()
@@ -36,25 +36,68 @@ def private_messages_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
         )
 
 
-def scenario_handler(user_text, user_in_db):
+def start_scenario(user_id, scenario_name, user_text=None):
+    first_step_name = SCENARIOS[scenario_name]['first_step']
+    steps = SCENARIOS[scenario_name]['steps']
+    step = steps[first_step_name]
+    dispatch_dict = {'receiver_id': user_id}
+
+    if db.UserConversation.select().where(db.UserConversation.user_id == user_id):
+        user_in_db = db.UserConversation.select().where(db.UserConversation.user_id == user_id).get()
+        user_in_db.scenario_name = scenario_name
+        user_in_db.step_name = step
+        user_in_db.save()
+    else:
+        user_in_db = db.UserConversation.create(
+            user_id=user_id,
+            scenario_name=scenario_name,
+            step_name=step,
+            context={'messages': []}
+        )
+
+    if 'message' in step:
+        dispatch_dict['text_list'] = [step['message']]
+
+    user_in_db.step_name = step['next_step']
+    user_in_db.save()
+
+    return dispatch_dict
+
+
+def continue_scenario(user_text, user_in_db):
     scenario_name = user_in_db.scenario_name
     steps = SCENARIOS[scenario_name]['steps']
     step = steps[user_in_db.step_name]
     dispatch_dict = {}
 
-    handler = getattr(scenario_handlers, step['handler'])
-    handler(user_text=user_text, user_in_db=user_in_db, dispatch_dict=dispatch_dict)
+    if 'handler' in step:
+        handler = getattr(scenario_handlers, step['handler'])
+        handler(
+            user_text=user_text,
+            user_in_db=user_in_db,
+            dispatch_dict=dispatch_dict,
+            steps=steps,
+            step=step
+        )
+    else:
+        general_step_handler(dispatch_dict=dispatch_dict, step=step)
 
-    if 'next_step' in dispatch_dict:
+    if 'same_step' not in dispatch_dict:
         if 'next_step' in step:
             user_in_db.step_name = step['next_step']
         else:
             user_in_db.step_name = None
             user_in_db.scenario_name = None
+            user_in_db.context = {'messages': []}
 
         user_in_db.save()
 
     return dispatch_dict
+
+
+def general_step_handler(dispatch_dict, step):
+    if 'message' in step:
+        dispatch_dict['text_list'] = step['message']
 
 
 
