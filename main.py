@@ -48,11 +48,11 @@ async def help(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     scenario_name = query.data
-    user_id = update.effective_user.id
+    user = update.effective_user
 
     await query.edit_message_text(text=f"Выбранно: {scenario_name}")
 
-    dispatch_dict = start_scenario(user_id=user_id, scenario_name=scenario_name)
+    dispatch_dict = start_scenario(user=user, scenario_name=scenario_name)
     if dispatch_dict:
         if 'text_list' in dispatch_dict:
             for text in dispatch_dict['text_list']:
