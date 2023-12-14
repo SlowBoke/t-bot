@@ -81,7 +81,7 @@ def continue_scenario(user_text, user_in_db, user):
             step=step
         )
     else:
-        general_step_handler(dispatch_dict=dispatch_dict, step=step)
+        general_step_handler(user_id=user.id, dispatch_dict=dispatch_dict, step=step, scenario_name=scenario_name)
 
     if 'same_step' not in dispatch_dict:
         if 'next_step' in step:
@@ -96,9 +96,15 @@ def continue_scenario(user_text, user_in_db, user):
     return dispatch_dict
 
 
-def general_step_handler(dispatch_dict, step):
-    if 'message' in step:
-        dispatch_dict['text_list'] = step['message']
+def general_step_handler(user_id, dispatch_dict, step, scenario_name):
+    if scenario_name in ['Задать вопрос', 'Авторизация']:
+        if 'message' in step:
+            dispatch_dict['text_list'] = step['message']
+            dispatch_dict['receiver_id'] = user_id
+    elif scenario_name == 'Администратор':
+        pass
+    else:
+        dispatch_dict['start'] = True
 
 
 

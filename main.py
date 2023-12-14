@@ -1,14 +1,15 @@
 # -*- coding: utf-8 -*-
 
 import peewee
+import telegram
 
 import db
 from settings import TOKEN, SCENARIOS
 from private_message_handler import private_messages_handler, start_scenario
 
-from telegram import (Update, InlineQueryResultArticle, InputTextMessageContent,
-                      InlineKeyboardButton, InlineKeyboardMarkup)
-from telegram.ext import (filters, MessageHandler, ApplicationBuilder, ContextTypes,
+from telegram import (Update, InlineQueryResultArticle, InputTextMessageContent, BotCommand, MenuButton,
+                      MenuButtonCommands, InlineKeyboardButton, InlineKeyboardMarkup)
+from telegram.ext import (filters, MessageHandler, Application, ApplicationBuilder, ContextTypes,
                           CommandHandler, InlineQueryHandler, CallbackQueryHandler)
 
 
@@ -32,6 +33,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reply_markup = InlineKeyboardMarkup(keyboard)
 
     await update.message.reply_text('Пожалуйста, выберите:', reply_markup=reply_markup)
+
+    # command1 = BotCommand(command='start', description='Начните отсюда, чтоб выбрать действие.')
+    # command2 = BotCommand(command='help', description='Краткое описание возможностей бота.')
+    # await context.bot.set_my_commands([command1, command2])
+    # await update.effective_user.set_menu_button(menu_button=MenuButtonCommands())
 
 
 async def help(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -65,6 +71,21 @@ async def private_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if 'text_list' in dispatch_dict:
             for text in dispatch_dict['text_list']:
                 await context.bot.send_message(chat_id=dispatch_dict['receiver_id'], text=text)
+        if 'start' in dispatch_dict:
+            await start(update=update, context=context)
+
+
+# async def menu_button():
+#     async with telegram.Bot(TOKEN) as bot:
+#
+#         update = bot.get_updates()
+#         command1 = BotCommand(command='start', description='Начните отсюда, чтоб выбрать действие.')
+#         command2 = BotCommand(command='help', description='Краткое описание возможностей бота.')
+#         await bot.set_my_commands([command1, command2])
+#         await update.effective_user.set_menu_button(menu_button=MenuButton('Меню'))
+
+
+
 
 
 # async def dispatch_dict_handler(dispatch_dict, context: ContextTypes.DEFAULT_TYPE):
@@ -75,7 +96,6 @@ async def private_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 if __name__ == '__main__':
     db_init()
-
     application = ApplicationBuilder().token(TOKEN).build()
 
     start_handler = CommandHandler('start', start)

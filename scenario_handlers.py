@@ -28,7 +28,8 @@ def admin_receiver(user, user_text, user_in_db, dispatch_dict, **kwargs):
         # TODO: разобраться с числом админов
         admin = admins_ready.get()  # _list.sort(key=lambda args: random())[0]
         admin_id = admin.user_id
-        admin.step_name = SCENARIOS[admin.scenario_name]['first_step']
+        admin.step_name = SCENARIOS[admin.scenario_name]['steps'][admin.step_name]['next_step']
+        admin.context['customer_id'] = user.id
         admin.save()
 
         dispatch_dict['text_list'] = user_in_db.context['messages']
@@ -41,6 +42,18 @@ def admin_receiver(user, user_text, user_in_db, dispatch_dict, **kwargs):
     dispatch_dict['text_list'].append(user_text)
     dispatch_dict['receiver_id'] = admin_id
     dispatch_dict['same_step'] = True
+
+
+def customer_receiver(user, user_text, user_in_db, dispatch_dict, **kwargs):
+    customer_id = user_in_db.context['customer_id']
+    admin_name = db.AdminLogin.select().where(db.AdminLogin.user_id == user.id).get().admin_name
+    text_with_admin_name = f'{admin_name}:\n\n{user_text}'
+
+    dispatch_dict['receiver_id'] = customer_id
+    dispatch_dict['text_list'] = [text_with_admin_name]
+    dispatch_dict['same_step'] = True
+
+
 
 
 def login_handler(user_text, user_in_db, dispatch_dict, steps, step, **kwargs):
