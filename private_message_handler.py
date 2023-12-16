@@ -84,14 +84,16 @@ def continue_scenario(user_text, user_in_db, user):
         general_step_handler(user_id=user.id, dispatch_dict=dispatch_dict, step=step, scenario_name=scenario_name)
 
     if 'same_step' not in dispatch_dict:
-        if 'next_step' in step:
+        if step['next_step']:
             user_in_db.step_name = step['next_step']
+            user_in_db.save()
         else:
-            user_in_db.step_name = None
-            user_in_db.scenario_name = None
-            user_in_db.context = {'messages': []}
-
-        user_in_db.save()
+            db.UserConversation.delete().where(db.UserConversation.user_id == user.id).execute()
+        #     user_in_db.step_name = None
+        #     user_in_db.scenario_name = None
+        #     user_in_db.context = {'messages': []}
+        #
+        # user_in_db.save()
 
     return dispatch_dict
 

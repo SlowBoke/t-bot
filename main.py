@@ -51,6 +51,46 @@ async def help(update: Update, context: ContextTypes.DEFAULT_TYPE):
                                                   'их дальнейшего анализа.')
 
 
+async def admin_logout(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+
+    if user.id == db.UserConversation.select(db.UserConversation.user_id):
+        user_db = db.UserConversation.select().where(db.UserConversation.user_id == user.id).get()
+
+        if user_db.scenario_name == 'Администратор':
+            db.UserConversation.delete().where(db.UserConversation.user_id == user.id).execute()
+            await update.effective_user.send_message(text='Выход произведён, всего доброго.')
+
+            new_menu = {
+                'start': 'Начните отсюда, чтобы выбрать действие.',
+                'help': 'Краткое описание возможностей бота.'
+            }
+            await menu_button(update=update, context=context, command_dict=new_menu)
+            return None
+
+    await update.effective_user.send_message(text='Вы не являетесь модератором.')
+
+
+async def admin_conversation_over(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+
+    admin_db = db.UserConversation.select().where(db.UserConversation.user_id == user.id).get()
+    customer_id = admin_db.context['customer_id']
+    customer_db = db.UserConversation.select().where(db.UserConversation.user_id == customer_id).get()
+
+    admin_db.step_name = SCENARIOS[admin_db.scenario_name]['first_step']
+    admin_db.context = {}
+    admin_db.save()
+
+    customer_db.step_name = SCENARIOS[customer_db.scenario_name]['steps'][customer_db.step_name]['next_step']
+    customer_db.save()
+
+    await update.effective_user.send_message(text='Диалог завершён.')
+    await context.bot.send_message(chat_id=customer_id, text='Благодарим за обращение. \n'
+                                                             'Остались ли вы довольны общением? Напишите "1", если да,'
+                                                             '"0" - если нет.')
+
+
 async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     scenario_name = query.data
@@ -73,16 +113,20 @@ async def private_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await context.bot.send_message(chat_id=dispatch_dict['receiver_id'], text=text)
         if 'start' in dispatch_dict:
             await start(update=update, context=context)
+        if 'menu_change' in dispatch_dict:
+            new_menu = {
+                'logout': 'Выход из режима модерации.',
+                'close': 'Завершить текущий диалог.',
+                'help': 'Краткое описание возможностей бота.'
+            }
+            await menu_button(update=update, context=context, command_dict=new_menu)
 
 
-# async def menu_button():
-#     async with telegram.Bot(TOKEN) as bot:
-#
-#         update = bot.get_updates()
-#         command1 = BotCommand(command='start', description='Начните отсюда, чтоб выбрать действие.')
-#         command2 = BotCommand(command='help', description='Краткое описание возможностей бота.')
-#         await bot.set_my_commands([command1, command2])
-#         await update.effective_user.set_menu_button(menu_button=MenuButton('Меню'))
+async def menu_button(update: Update, context: ContextTypes.DEFAULT_TYPE, command_dict):  # TODO: no individual menu
+    command_list = [BotCommand(command=key, description=arg) for key, arg in command_dict.items()]
+
+    await context.bot.set_my_commands(command_list)
+    await update.effective_user.set_menu_button(menu_button=MenuButtonCommands())
 
 
 
@@ -100,11 +144,15 @@ if __name__ == '__main__':
 
     start_handler = CommandHandler('start', start)
     help_handler = CommandHandler('help', help)
+    logout_handler = CommandHandler('logout', admin_logout)
+    close_handler = CommandHandler('close', admin_conversation_over)
     button_handler = CallbackQueryHandler(button)
     private_message_handler = MessageHandler(filters.TEXT & (~filters.COMMAND), private_message)
 
     application.add_handler(start_handler)
     application.add_handler(help_handler)
+    application.add_handler(logout_handler)
+    application.add_handler(close_handler)
     application.add_handler(button_handler)
     application.add_handler(private_message_handler)
 
