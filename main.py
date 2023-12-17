@@ -2,6 +2,7 @@
 
 import peewee
 import telegram
+import asyncio
 
 import db
 from settings import TOKEN, SCENARIOS
@@ -141,18 +142,10 @@ async def menu_button(update: Update, context: ContextTypes.DEFAULT_TYPE, comman
     await update.effective_user.set_menu_button(menu_button=MenuButtonCommands())
 
 
-
-
-
-# async def dispatch_dict_handler(dispatch_dict, context: ContextTypes.DEFAULT_TYPE):
-#     if 'text_list' in dispatch_dict:
-#         for text in dispatch_dict['text_list']:
-#             await context.bot.send_message(chat_id=dispatch_dict['receiver_id'], text=text)
-
-
-if __name__ == '__main__':
+def main():
     db_init()
-    application = ApplicationBuilder().token(TOKEN).build()
+
+    application = ApplicationBuilder().token(TOKEN).concurrent_updates(True).build()
 
     start_handler = CommandHandler('start', start)
     help_handler = CommandHandler('help', help)
@@ -169,3 +162,14 @@ if __name__ == '__main__':
     application.add_handler(private_message_handler)
 
     application.run_polling()
+
+
+
+# async def dispatch_dict_handler(dispatch_dict, context: ContextTypes.DEFAULT_TYPE):
+#     if 'text_list' in dispatch_dict:
+#         for text in dispatch_dict['text_list']:
+#             await context.bot.send_message(chat_id=dispatch_dict['receiver_id'], text=text)
+
+
+if __name__ == '__main__':
+    main()

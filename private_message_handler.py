@@ -80,7 +80,7 @@ async def continue_scenario(user_text, user_in_db, user, dispatch_dict):
             step=step
         )
     else:
-        general_step_handler(user_id=user.id, dispatch_dict=dispatch_dict, step=step, scenario_name=scenario_name)
+        await general_step_handler(user_id=user.id, dispatch_dict=dispatch_dict, step=step, scenario_name=scenario_name)
 
     if 'same_step' not in dispatch_dict:
         if step['next_step']:

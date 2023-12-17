@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 
+import asyncio
 import peewee
 import time
 
@@ -43,7 +44,7 @@ async def admin_receiver(user, user_text, user_in_db, dispatch_dict, **kwargs):
             user_in_db.save()
         except peewee.DoesNotExist as exc:
             await user.send_message(text='В данный момент все модераторы заняты. Пожалуйста, подождите.')
-            time.sleep(30)
+            await asyncio.sleep(30)
             return await admin_receiver(user, user_text, user_in_db, dispatch_dict, **kwargs)
 
     dispatch_dict['text_list'].append(user_text)
