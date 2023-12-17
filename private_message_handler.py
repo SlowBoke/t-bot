@@ -14,7 +14,7 @@ from telegram.ext import (filters, MessageHandler, ApplicationBuilder, ContextTy
                           CommandHandler, InlineQueryHandler, CallbackQueryHandler)
 
 
-def private_messages_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def private_messages_handler(update: Update, context: ContextTypes.DEFAULT_TYPE, dispatch_dict):
     user = update.effective_user
     user_text = update.effective_message.text
 
@@ -22,7 +22,7 @@ def private_messages_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
         user_in_db = db.UserConversation.select().where(db.UserConversation.user_id == user.id).get()
 
         if user_in_db.scenario_name != 'NULL':
-            return continue_scenario(user_text=user_text, user_in_db=user_in_db, user=user)
+            await continue_scenario(user_text=user_text, user_in_db=user_in_db, user=user, dispatch_dict=dispatch_dict)
         else:
             user_in_db.context['messages'].append(update.effective_message.text)
             user_in_db.save()
@@ -64,15 +64,14 @@ def start_scenario(user, scenario_name, **kwargs):
     return dispatch_dict
 
 
-def continue_scenario(user_text, user_in_db, user):
+async def continue_scenario(user_text, user_in_db, user, dispatch_dict):
     scenario_name = user_in_db.scenario_name
     steps = SCENARIOS[scenario_name]['steps']
     step = steps[user_in_db.step_name]
-    dispatch_dict = {}
 
     if 'handler' in step:
         handler = getattr(scenario_handlers, step['handler'])
-        handler(
+        await handler(
             user=user,
             user_text=user_text,
             user_in_db=user_in_db,
@@ -95,10 +94,8 @@ def continue_scenario(user_text, user_in_db, user):
         #
         # user_in_db.save()
 
-    return dispatch_dict
 
-
-def general_step_handler(user_id, dispatch_dict, step, scenario_name):
+async def general_step_handler(user_id, dispatch_dict, step, scenario_name):
     if scenario_name in ['Задать вопрос', 'Авторизация']:
         if 'message' in step:
             dispatch_dict['text_list'] = step['message']

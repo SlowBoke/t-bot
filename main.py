@@ -54,7 +54,7 @@ async def help(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def admin_logout(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
 
-    if user.id == db.UserConversation.select(db.UserConversation.user_id):
+    try:
         user_db = db.UserConversation.select().where(db.UserConversation.user_id == user.id).get()
 
         if user_db.scenario_name == 'Администратор':
@@ -66,29 +66,40 @@ async def admin_logout(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 'help': 'Краткое описание возможностей бота.'
             }
             await menu_button(update=update, context=context, command_dict=new_menu)
-            return None
-
-    await update.effective_user.send_message(text='Вы не являетесь модератором.')
+        else:
+            await update.effective_user.send_message(text='Вы не являетесь модератором.')
+    except peewee.DoesNotExist as exc:
+        await update.effective_user.send_message(text='Вы не являетесь модератором.')
 
 
 async def admin_conversation_over(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
 
-    admin_db = db.UserConversation.select().where(db.UserConversation.user_id == user.id).get()
-    customer_id = admin_db.context['customer_id']
-    customer_db = db.UserConversation.select().where(db.UserConversation.user_id == customer_id).get()
+    try:
+        admin_db = db.UserConversation.select().where(db.UserConversation.user_id == user.id).get()
+        if admin_db.scenario_name == 'Администратор':
+            if admin_db.step_name == 'step2':
+                customer_id = admin_db.context['customer_id']
+                customer_db = db.UserConversation.select().where(db.UserConversation.user_id == customer_id).get()
 
-    admin_db.step_name = SCENARIOS[admin_db.scenario_name]['first_step']
-    admin_db.context = {}
-    admin_db.save()
+                admin_db.step_name = SCENARIOS[admin_db.scenario_name]['first_step']
+                admin_db.context = {}
+                admin_db.save()
 
-    customer_db.step_name = SCENARIOS[customer_db.scenario_name]['steps'][customer_db.step_name]['next_step']
-    customer_db.save()
+                customer_steps = SCENARIOS[customer_db.scenario_name]['steps']
+                customer_db.step_name = customer_steps[customer_db.step_name]['next_step']
+                customer_db.save()
 
-    await update.effective_user.send_message(text='Диалог завершён.')
-    await context.bot.send_message(chat_id=customer_id, text='Благодарим за обращение. \n'
-                                                             'Остались ли вы довольны общением? Напишите "1", если да,'
-                                                             '"0" - если нет.')
+                await update.effective_user.send_message(text='Диалог завершён.')
+                await context.bot.send_message(chat_id=customer_id, text='Благодарим за обращение. \n'
+                                                                         'Остались ли вы довольны общением? '
+                                                                         'Напишите "1", если да,''"0" - если нет.')
+            else:
+                await update.effective_user.send_message(text='У вас нет активных диалогов.')
+        else:
+            await update.effective_user.send_message(text='Вы не являетесь модератором.')
+    except peewee.DoesNotExist as exc:
+        await update.effective_user.send_message(text='Вы не являетесь модератором.')
 
 
 async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -106,7 +117,8 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def private_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    dispatch_dict = private_messages_handler(update=update, context=context)
+    dispatch_dict = {}
+    await private_messages_handler(update=update, context=context, dispatch_dict=dispatch_dict)
     if dispatch_dict:
         if 'text_list' in dispatch_dict:
             for text in dispatch_dict['text_list']:

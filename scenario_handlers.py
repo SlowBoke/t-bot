@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
 import peewee
+import time
 
 import db
 from settings import SCENARIOS
@@ -13,38 +14,44 @@ from telegram.ext import (filters, MessageHandler, ApplicationBuilder, ContextTy
                           CommandHandler, InlineQueryHandler, CallbackQueryHandler)
 
 
-def admin_receiver(user, user_text, user_in_db, dispatch_dict, **kwargs):
+async def admin_receiver(user, user_text, user_in_db, dispatch_dict, **kwargs):
     text_new_task = 'Новое обращение от пользователя {user_link}:'.format(user_link=user.link)
+    admin_id = None
 
     if 'admin_id' in user_in_db.context:
         admin_id = user_in_db.context['admin_id']
         dispatch_dict['text_list'] = []
     else:
-        admins_ready = db.UserConversation.select().where(
-            db.UserConversation.scenario_name == 'Администратор' and
-            db.UserConversation.step_name == 'step1'
-        )
+        try:
+            admin = db.UserConversation.select().where(
+                db.UserConversation.scenario_name == 'Администратор' and
+                db.UserConversation.step_name == 'step1'
+            ).get()
 
-        # TODO: разобраться с числом админов
-        admin = admins_ready.get()  # _list.sort(key=lambda args: random())[0]
-        admin_id = admin.user_id
-        admin.step_name = SCENARIOS[admin.scenario_name]['steps'][admin.step_name]['next_step']
-        admin.context['customer_id'] = user.id
-        admin.save()
+            # TODO: разобраться с числом админов
+            # admin = admins_ready.get()  # _list.sort(key=lambda args: random())[0]
+            admin_id = admin.user_id
+            admin.step_name = SCENARIOS[admin.scenario_name]['steps'][admin.step_name]['next_step']
+            admin.context['customer_id'] = user.id
+            admin.save()
 
-        dispatch_dict['text_list'] = user_in_db.context['messages']
-        dispatch_dict['text_list'].insert(0, text_new_task)
+            dispatch_dict['text_list'] = user_in_db.context['messages']
+            dispatch_dict['text_list'].insert(0, text_new_task)
 
-        user_in_db.context['admin_id'] = admin_id
-        user_in_db.context['messages'] = []
-        user_in_db.save()
+            user_in_db.context['admin_id'] = admin_id
+            user_in_db.context['messages'] = []
+            user_in_db.save()
+        except peewee.DoesNotExist as exc:
+            await user.send_message(text='В данный момент все модераторы заняты. Пожалуйста, подождите.')
+            time.sleep(30)
+            return await admin_receiver(user, user_text, user_in_db, dispatch_dict, **kwargs)
 
     dispatch_dict['text_list'].append(user_text)
     dispatch_dict['receiver_id'] = admin_id
     dispatch_dict['same_step'] = True
 
 
-def customer_receiver(user, user_text, user_in_db, dispatch_dict, **kwargs):
+async def customer_receiver(user, user_text, user_in_db, dispatch_dict, **kwargs):
     customer_id = user_in_db.context['customer_id']
     admin_name = db.AdminLogin.select().where(db.AdminLogin.user_id == user.id).get().admin_name
     text_with_admin_name = f'{admin_name}:\n{user_text}'
@@ -54,18 +61,13 @@ def customer_receiver(user, user_text, user_in_db, dispatch_dict, **kwargs):
     dispatch_dict['same_step'] = True
 
 
-
-
-def login_handler(user_text, user_in_db, dispatch_dict, steps, step, **kwargs):
-    admins = db.AdminLogin.select()
-
-    for admin in admins:
-        if user_text == admin.login:
-            dispatch_dict['text_list'] = [steps[step['next_step']]['message']]
-            user_in_db.context['login'] = user_text
-            user_in_db.save()
-            break
-    else:
+async def login_handler(user_text, user_in_db, dispatch_dict, steps, step, **kwargs):
+    try:
+        admin = db.AdminLogin.select().where(db.AdminLogin.login == user_text).get()
+        dispatch_dict['text_list'] = [steps[step['next_step']]['message']]
+        user_in_db.context['login'] = user_text
+        user_in_db.save()
+    except peewee.DoesNotExist as exc:
         dispatch_dict['text_list'] = [step['message_failure']]
         dispatch_dict['text_list'].append(step['message'])
         dispatch_dict['same_step'] = True
@@ -73,7 +75,7 @@ def login_handler(user_text, user_in_db, dispatch_dict, steps, step, **kwargs):
     dispatch_dict['receiver_id'] = user_in_db.user_id
 
 
-def password_handler(user_text, user_in_db, dispatch_dict, step, **kwargs):
+async def password_handler(user_text, user_in_db, dispatch_dict, step, **kwargs):
     admin = db.AdminLogin.select().where(db.AdminLogin.login == user_in_db.context['login']).get()
     admin_name = admin.admin_name
     new_scenario = 'Администратор'
@@ -98,7 +100,7 @@ def password_handler(user_text, user_in_db, dispatch_dict, step, **kwargs):
         user_in_db.save()
 
 
-def rating_handler(user_text, user_in_db, dispatch_dict, steps, step, **kwargs):
+async def rating_handler(user_text, user_in_db, dispatch_dict, steps, step, **kwargs):
     if user_text == '1':
         pass
         dispatch_dict['text_list'] = [step['message1']]
