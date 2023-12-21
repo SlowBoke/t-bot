@@ -27,8 +27,9 @@ def db_init():
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_chat.type == 'private':
-        await update.effective_user.send_message(text='Вас приветствует бот Телеграм-канала "НеймХолдер". '
-                                                      'Укажите, чем могу вам помочь.')
+        await update.effective_user.send_message(
+            text='Вас приветствует бот Телеграм-канала "НеймХолдер". Укажите, чем могу вам помочь.'
+        )
 
         keyboard = [
             [InlineKeyboardButton("Задать вопрос", callback_data='Задать вопрос')],
@@ -46,13 +47,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_chat.type == 'private':
-        await update.effective_chat.send_message(text='Данный бот осуществляет коммуникацию между пользователями '
-                                                      'и модераторами Телеграм-канала "НеймХолдер, \n'
-                                                      'проводит первичную модерацию сообщений внутри канала, \n'
-                                                      'обеспечивает модераторов и владельца канала инструментами '
-                                                      'своевременного оповещения о нарушениях политики канала и '
-                                                      'сбора информации о действиях внутри канала для '
-                                                      'их дальнейшего анализа.')
+        await update.effective_chat.send_message(
+            text='Данный бот осуществляет коммуникацию между пользователями и модераторами Телеграм-канала "НеймХолдер,'
+                 '\nпроводит первичную модерацию сообщений внутри канала, \nобеспечивает модераторов и владельца '
+                 'канала инструментами своевременного оповещения о нарушениях политики канала и сбора информации о '
+                 'действиях внутри канала для их дальнейшего анализа.'
+        )
 
 
 async def admin_logout(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -97,15 +97,91 @@ async def admin_conversation_over(update: Update, context: ContextTypes.DEFAULT_
                     customer_db.save()
 
                     await update.effective_user.send_message(text='Диалог завершён.')
-                    await context.bot.send_message(chat_id=customer_id, text='Благодарим за обращение. \n'
-                                                                             'Остались ли вы довольны общением? '
-                                                                             'Напишите "1", если да,''"0" - если нет.')
+                    await context.bot.send_message(
+                        chat_id=customer_id,
+                        text='Благодарим за обращение. \nОстались ли вы довольны общением? '
+                             'Напишите "1", если да,''"0" - если нет.'
+                    )
                 else:
                     await update.effective_user.send_message(text='У вас нет активных диалогов.')
             else:
                 await update.effective_user.send_message(text='Вы не являетесь модератором.')
         except peewee.DoesNotExist as exc:
             await update.effective_user.send_message(text='Вы не являетесь модератором.')
+
+
+async def ban_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_admins = await update.effective_chat.get_administrators()
+    if update.effective_user in (admin.user for admin in chat_admins):
+        guilty_user = update.message.reply_to_message.from_user
+
+        await guilty_user.send_message(
+            text=f'Вы были исключены из группы "НеймХолдер", причиной послужило ваше сообщение:'
+        )
+        await update.message.reply_to_message.copy(chat_id=guilty_user.id)
+        await guilty_user.send_message(
+            text=f'Для восстановления в группе обратитесь к модератору посредством данного бота.'
+        )
+
+        await update.message.reply_to_message.delete()
+        await update.message.delete()
+        await update.effective_chat.ban_member(user_id=guilty_user.id)
+
+
+async def warn_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_admins = await update.effective_chat.get_administrators()
+    if update.effective_user in (admin.user for admin in chat_admins):
+        guilty_user = update.message.reply_to_message.from_user
+        acceptable_warning_quantity = 4
+
+        try:
+            user_db = db.GroupViolation.select().where(db.GroupViolation.user_id == guilty_user.id).get()
+            user_db.violation_quantity += 1
+            user_db.save()
+
+            if user_db.violation_quantity > acceptable_warning_quantity:
+
+                await guilty_user.send_message(
+                    text=f'Вы были исключены из группы "НеймХолдер", причиной послужило ваше сообщение:'
+                )
+                await update.message.reply_to_message.copy(chat_id=guilty_user.id)
+                await guilty_user.send_message(
+                    text=f'Для восстановления в группе обратитесь к модератору посредством данного бота.'
+                )
+
+                await update.message.reply_to_message.delete()
+                await update.message.delete()
+                await update.effective_chat.ban_member(user_id=guilty_user.id)
+
+                db.GroupViolation.delete().where(db.GroupViolation.user_id == guilty_user.id).execute()
+                return
+        except peewee.DoesNotExist as exc:
+            db.GroupViolation.create(user_id=guilty_user.id, violation_quantity=1)
+        finally:
+            user_db = db.GroupViolation.select().where(db.GroupViolation.user_id == guilty_user.id).get()
+
+            if user_db.violation_quantity == acceptable_warning_quantity:
+                await guilty_user.send_message(
+                    text=f'Вам вынесено предупреждение вследствие нарушения правил группы "НеймХолдер" вашим сообщением:'
+                )
+                await update.message.reply_to_message.copy(chat_id=guilty_user.id)
+                await guilty_user.send_message(
+                    text=f'Внимание! Это - крайнее предупреждение, следующее нарушение правил приведёт к исключению '
+                         f'из группы'
+                )
+
+            else:
+                await guilty_user.send_message(
+                    text=f'Вам вынесено предупреждение вследствие нарушения правил группы "НеймХолдер" вашим сообщением:'
+                )
+                await update.message.reply_to_message.copy(chat_id=guilty_user.id)
+                await guilty_user.send_message(
+                    text=f'Дальнейшее игнорирование предписаний может повлечь за собой исключение из группы, '
+                         f'будьте внимательны!'
+                )
+
+            await update.message.reply_to_message.delete()
+            await update.message.delete()
 
 
 async def new_user_restrict(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -129,7 +205,7 @@ async def new_user_restrict(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ] or (new_status == ChatMember.RESTRICTED and new_is_member is True)
 
         if not was_member and is_member:
-            datetime_now = datetime.datetime.now()
+            datetime_now = datetime.datetime.utcnow()
             datetime_restricted = datetime_now + datetime.timedelta(minutes=1)
             new_user_id = update.chat_member.new_chat_member.user.id
             permissions_new = ChatPermissions(
@@ -154,9 +230,11 @@ async def new_user_restrict(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 until_date=datetime_restricted,
                 permissions=permissions_new,
             )
-            await context.bot.send_message(chat_id=new_user_id, text='Рад приветствовать вас в группе "НеймХолдер". '
-                                                                     'Для новых пользователей в течение часа действует '
-                                                                     'ограничение на отправку медиа и ссылок.')
+            await context.bot.send_message(
+                chat_id=new_user_id,
+                text='Рад приветствовать вас в группе "НеймХолдер". Для новых пользователей в течение часа действует '
+                     'ограничение на отправку медиа и ссылок.'
+            )
 
 
 async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -209,18 +287,16 @@ def main():
     help_handler = CommandHandler('help', help)
     logout_handler = CommandHandler('logout', admin_logout)
     close_handler = CommandHandler('close', admin_conversation_over)
+    ban_handler = CommandHandler('ban', ban_user)
+    warning_handler = CommandHandler('warn', warn_user)
     button_handler = CallbackQueryHandler(button)
     new_member_handler = ChatMemberHandler(new_user_restrict, ChatMemberHandler.CHAT_MEMBER)
     private_message_handler = MessageHandler(filters.TEXT & (~filters.COMMAND), private_message)
 
-    application.add_handler(start_handler)
-    application.add_handler(help_handler)
-    application.add_handler(logout_handler)
-    application.add_handler(close_handler)
+    application.add_handlers([start_handler, help_handler, logout_handler, close_handler, ban_handler, warning_handler])
     application.add_handler(button_handler)
     application.add_handler(new_member_handler)
     application.add_handler(private_message_handler)
-
 
     application.run_polling(allowed_updates=Update.ALL_TYPES)
 
