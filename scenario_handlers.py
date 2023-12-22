@@ -17,7 +17,6 @@ from telegram.ext import (filters, MessageHandler, ApplicationBuilder, ContextTy
 
 async def admin_receiver(user, user_text, user_in_db, dispatch_dict, **kwargs):
     text_new_task = 'Новое обращение от пользователя {user_link}:'.format(user_link=user.link)
-    admin_id = None
 
     if 'admin_id' in user_in_db.context:
         admin_id = user_in_db.context['admin_id']
@@ -42,8 +41,9 @@ async def admin_receiver(user, user_text, user_in_db, dispatch_dict, **kwargs):
             user_in_db.context['admin_id'] = admin_id
             user_in_db.context['messages'] = []
             user_in_db.save()
-        except peewee.DoesNotExist as exc:
+        except peewee.DoesNotExist:
             await user.send_message(text='В данный момент все модераторы заняты. Пожалуйста, подождите.')
+            # TODO: message will be sent every 30 sec. Should correct that
             await asyncio.sleep(30)
             return await admin_receiver(user, user_text, user_in_db, dispatch_dict, **kwargs)
 
@@ -64,11 +64,11 @@ async def customer_receiver(user, user_text, user_in_db, dispatch_dict, **kwargs
 
 async def login_handler(user_text, user_in_db, dispatch_dict, steps, step, **kwargs):
     try:
-        admin = db.AdminLogin.select().where(db.AdminLogin.login == user_text).get()
+        db.AdminLogin.select().where(db.AdminLogin.login == user_text).get()
         dispatch_dict['text_list'] = [steps[step['next_step']]['message']]
         user_in_db.context['login'] = user_text
         user_in_db.save()
-    except peewee.DoesNotExist as exc:
+    except peewee.DoesNotExist:
         dispatch_dict['text_list'] = [step['message_failure']]
         dispatch_dict['text_list'].append(step['message'])
         dispatch_dict['same_step'] = True
@@ -110,4 +110,3 @@ async def rating_handler(user_text, user_in_db, dispatch_dict, steps, step, **kw
         dispatch_dict['text_list'] = [step['message0']]
 
     dispatch_dict['receiver_id'] = user_in_db.user_id
-

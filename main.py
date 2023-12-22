@@ -9,12 +9,16 @@ import db
 from settings import TOKEN, SCENARIOS
 from private_message_handler import private_messages_handler, start_scenario
 
-from telegram import (Update, InlineQueryResultArticle, InputTextMessageContent, BotCommand, MenuButton, ChatMember,
-                      MenuButtonCommands, InlineKeyboardButton, InlineKeyboardMarkup, ChatPermissions)
+from telegram import (
+    Update, InlineQueryResultArticle, InputTextMessageContent, BotCommand, BotCommandScopeAllPrivateChats,
+    BotCommandScopeChat, BotCommandScopeAllChatAdministrators, MenuButton, ChatMember, MenuButtonCommands,
+    InlineKeyboardButton, InlineKeyboardMarkup, ChatPermissions
+)
 
-from telegram.ext import (filters, MessageHandler, Application, ApplicationBuilder, ContextTypes,
-                          CommandHandler, InlineQueryHandler, CallbackQueryHandler,
-                          ChatMemberHandler, ChatJoinRequestHandler)
+from telegram.ext import (
+    filters, MessageHandler, Application, ApplicationBuilder, ContextTypes, CommandHandler, InlineQueryHandler,
+    CallbackQueryHandler, ChatMemberHandler, ChatJoinRequestHandler
+)
 
 
 def db_init():
@@ -38,6 +42,29 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup = InlineKeyboardMarkup(keyboard)
 
         await update.message.reply_text('Пожалуйста, выберите:', reply_markup=reply_markup)
+
+        new_menu_chat = {
+            'start': 'Начните отсюда, чтобы выбрать действие.',
+            'help': 'Краткое описание возможностей бота.'
+        }
+        new_menu_group_admin = {
+            'ban': 'Забанить пользователя.',
+            'warn': 'Вынести пользователю предупреждение.',
+            'delete': 'Удалить сообщение.'
+        }
+
+        await menu_button(
+            update=update,
+            context=context,
+            command_dict=new_menu_chat,
+            scope=BotCommandScopeAllPrivateChats()
+        )
+        await menu_button(
+            update=update,
+            context=context,
+            command_dict=new_menu_group_admin,
+            scope=BotCommandScopeAllChatAdministrators()
+        )
 
     # command1 = BotCommand(command='start', description='Начните отсюда, чтоб выбрать действие.')
     # command2 = BotCommand(command='help', description='Краткое описание возможностей бота.')
@@ -66,14 +93,19 @@ async def admin_logout(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 db.UserConversation.delete().where(db.UserConversation.user_id == user.id).execute()
                 await update.effective_user.send_message(text='Выход произведён, всего доброго.')
 
-                new_menu = {
+                new_menu_chat = {
                     'start': 'Начните отсюда, чтобы выбрать действие.',
                     'help': 'Краткое описание возможностей бота.'
                 }
-                await menu_button(update=update, context=context, command_dict=new_menu)
+                await menu_button(
+                    update=update,
+                    context=context,
+                    command_dict=new_menu_chat,
+                    scope=BotCommandScopeChat(chat_id=update.effective_chat.id)
+                )
             else:
                 await update.effective_user.send_message(text='Вы не являетесь модератором.')
-        except peewee.DoesNotExist as exc:
+        except peewee.DoesNotExist:
             await update.effective_user.send_message(text='Вы не являетесь модератором.')
 
 
@@ -106,7 +138,7 @@ async def admin_conversation_over(update: Update, context: ContextTypes.DEFAULT_
                     await update.effective_user.send_message(text='У вас нет активных диалогов.')
             else:
                 await update.effective_user.send_message(text='Вы не являетесь модератором.')
-        except peewee.DoesNotExist as exc:
+        except peewee.DoesNotExist:
             await update.effective_user.send_message(text='Вы не являетесь модератором.')
 
 
@@ -115,17 +147,7 @@ async def ban_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user in (admin.user for admin in chat_admins):
         guilty_user = update.message.reply_to_message.from_user
 
-        await guilty_user.send_message(
-            text=f'Вы были исключены из группы "НеймХолдер", причиной послужило ваше сообщение:'
-        )
-        await update.message.reply_to_message.copy(chat_id=guilty_user.id)
-        await guilty_user.send_message(
-            text=f'Для восстановления в группе обратитесь к модератору посредством данного бота.'
-        )
-
-        await update.message.reply_to_message.delete()
-        await update.message.delete()
-        await update.effective_chat.ban_member(user_id=guilty_user.id)
+        await banning_sample(update=update, guilty_user=guilty_user)
 
 
 async def warn_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -140,29 +162,18 @@ async def warn_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
             user_db.save()
 
             if user_db.violation_quantity > acceptable_warning_quantity:
-
-                await guilty_user.send_message(
-                    text=f'Вы были исключены из группы "НеймХолдер", причиной послужило ваше сообщение:'
-                )
-                await update.message.reply_to_message.copy(chat_id=guilty_user.id)
-                await guilty_user.send_message(
-                    text=f'Для восстановления в группе обратитесь к модератору посредством данного бота.'
-                )
-
-                await update.message.reply_to_message.delete()
-                await update.message.delete()
-                await update.effective_chat.ban_member(user_id=guilty_user.id)
-
+                await banning_sample(update=update, guilty_user=guilty_user)
                 db.GroupViolation.delete().where(db.GroupViolation.user_id == guilty_user.id).execute()
                 return
-        except peewee.DoesNotExist as exc:
+        except peewee.DoesNotExist:
             db.GroupViolation.create(user_id=guilty_user.id, violation_quantity=1)
         finally:
             user_db = db.GroupViolation.select().where(db.GroupViolation.user_id == guilty_user.id).get()
 
             if user_db.violation_quantity == acceptable_warning_quantity:
                 await guilty_user.send_message(
-                    text=f'Вам вынесено предупреждение вследствие нарушения правил группы "НеймХолдер" вашим сообщением:'
+                    text=f'Вам вынесено предупреждение вследствие нарушения правил группы '
+                         f'"НеймХолдер" вашим сообщением:'
                 )
                 await update.message.reply_to_message.copy(chat_id=guilty_user.id)
                 await guilty_user.send_message(
@@ -172,7 +183,8 @@ async def warn_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             else:
                 await guilty_user.send_message(
-                    text=f'Вам вынесено предупреждение вследствие нарушения правил группы "НеймХолдер" вашим сообщением:'
+                    text=f'Вам вынесено предупреждение вследствие нарушения правил группы '
+                         f'"НеймХолдер" вашим сообщением:'
                 )
                 await update.message.reply_to_message.copy(chat_id=guilty_user.id)
                 await guilty_user.send_message(
@@ -182,6 +194,20 @@ async def warn_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             await update.message.reply_to_message.delete()
             await update.message.delete()
+
+
+async def banning_sample(update, guilty_user):
+    await guilty_user.send_message(
+        text=f'Вы были исключены из группы "НеймХолдер", причиной послужило ваше сообщение:'
+    )
+    await update.message.reply_to_message.copy(chat_id=guilty_user.id)
+    await guilty_user.send_message(
+        text=f'Для восстановления в группе обратитесь к модератору посредством данного бота.'
+    )
+
+    await update.message.reply_to_message.delete()
+    await update.message.delete()
+    await update.effective_chat.ban_member(user_id=guilty_user.id)
 
 
 async def new_user_restrict(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -263,18 +289,24 @@ async def private_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if 'start' in dispatch_dict:
                 await start(update=update, context=context)
             if 'menu_change' in dispatch_dict:
-                new_menu = {
+                new_menu_chat_admin = {
                     'logout': 'Выход из режима модерации.',
                     'close': 'Завершить текущий диалог.',
                     'help': 'Краткое описание возможностей бота.'
                 }
-                await menu_button(update=update, context=context, command_dict=new_menu)
+                await menu_button(
+                    update=update,
+                    context=context,
+                    command_dict=new_menu_chat_admin,
+                    scope=BotCommandScopeChat(chat_id=update.effective_chat.id)
+                )
 
 
-async def menu_button(update: Update, context: ContextTypes.DEFAULT_TYPE, command_dict):  # TODO: no individual menu
+async def menu_button(update: Update, context: ContextTypes.DEFAULT_TYPE, command_dict, scope):
+
     command_list = [BotCommand(command=key, description=arg) for key, arg in command_dict.items()]
 
-    await context.bot.set_my_commands(command_list)
+    await context.bot.set_my_commands(command_list, scope=scope)
     await update.effective_user.set_menu_button(menu_button=MenuButtonCommands())
 
 
@@ -299,13 +331,6 @@ def main():
     application.add_handler(private_message_handler)
 
     application.run_polling(allowed_updates=Update.ALL_TYPES)
-
-
-
-# async def dispatch_dict_handler(dispatch_dict, context: ContextTypes.DEFAULT_TYPE):
-#     if 'text_list' in dispatch_dict:
-#         for text in dispatch_dict['text_list']:
-#             await context.bot.send_message(chat_id=dispatch_dict['receiver_id'], text=text)
 
 
 if __name__ == '__main__':
