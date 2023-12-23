@@ -7,7 +7,7 @@ import datetime
 
 import db
 from settings import TOKEN, SCENARIOS
-from private_message_handler import private_messages_handler, start_scenario
+from private_message_handler import private_messages_handler, start_scenario, private_attachments_handler
 
 from telegram import (
     Update, InlineQueryResultArticle, InputTextMessageContent, BotCommand, BotCommandScopeAllPrivateChats,
@@ -90,6 +90,10 @@ async def admin_logout(update: Update, context: ContextTypes.DEFAULT_TYPE):
             user_db = db.UserConversation.select().where(db.UserConversation.user_id == user.id).get()
 
             if user_db.scenario_name == 'Администратор':
+
+                if user_db.step_name == 'step2':
+                    await admin_conversation_over(update=update, context=context)
+
                 db.UserConversation.delete().where(db.UserConversation.user_id == user.id).execute()
                 await update.effective_user.send_message(text='Выход произведён, всего доброго.')
 
@@ -140,6 +144,13 @@ async def admin_conversation_over(update: Update, context: ContextTypes.DEFAULT_
                 await update.effective_user.send_message(text='Вы не являетесь модератором.')
         except peewee.DoesNotExist:
             await update.effective_user.send_message(text='Вы не являетесь модератором.')
+            
+            
+async def delete_chat_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_admins = await update.effective_chat.get_administrators()
+    if update.effective_user in (admin.user for admin in chat_admins):
+        await update.message.reply_to_message.delete()
+        await update.message.delete()
 
 
 async def ban_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -286,6 +297,20 @@ async def private_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if 'text_list' in dispatch_dict:
                 for text in dispatch_dict['text_list']:
                     await context.bot.send_message(chat_id=dispatch_dict['receiver_id'], text=text)
+            if 'message_list' in dispatch_dict:
+                for message_id in dispatch_dict['message_list']:
+                    await context.bot.copy_message(
+                        chat_id=dispatch_dict['receiver_id'], 
+                        from_chat_id=update.message.chat_id,
+                        message_id=message_id
+                    )
+            if 'attachment_list' in dispatch_dict:
+                for attachment in dispatch_dict['attachment_list']:
+                    await private_attachments_handler(
+                        context=context,
+                        attachment=attachment,
+                        receiver_id=dispatch_dict['receiver_id']
+                    )
             if 'start' in dispatch_dict:
                 await start(update=update, context=context)
             if 'menu_change' in dispatch_dict:
@@ -323,7 +348,7 @@ def main():
     warning_handler = CommandHandler('warn', warn_user)
     button_handler = CallbackQueryHandler(button)
     new_member_handler = ChatMemberHandler(new_user_restrict, ChatMemberHandler.CHAT_MEMBER)
-    private_message_handler = MessageHandler(filters.TEXT & (~filters.COMMAND), private_message)
+    private_message_handler = MessageHandler((~filters.COMMAND), private_message)
 
     application.add_handlers([start_handler, help_handler, logout_handler, close_handler, ban_handler, warning_handler])
     application.add_handler(button_handler)
