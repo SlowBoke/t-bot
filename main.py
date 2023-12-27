@@ -4,9 +4,10 @@ import peewee
 import telegram
 import asyncio
 import datetime
+import re
 
 import db
-from settings import TOKEN, SCENARIOS
+from settings import TOKEN, SCENARIOS, FORBIDDEN_WORDS, ACCEPTABLE_WARNING_QUANTITY
 from private_message_handler import private_messages_handler, start_scenario, private_attachments_handler
 
 from telegram import (
@@ -165,46 +166,9 @@ async def warn_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_admins = await update.effective_chat.get_administrators()
     if update.effective_user in (admin.user for admin in chat_admins):
         guilty_user = update.message.reply_to_message.from_user
-        acceptable_warning_quantity = 4
+        guilty_message = update.message.reply_to_message
 
-        try:
-            user_db = db.GroupViolation.select().where(db.GroupViolation.user_id == guilty_user.id).get()
-            user_db.violation_quantity += 1
-            user_db.save()
-
-            if user_db.violation_quantity > acceptable_warning_quantity:
-                await banning_sample(update=update, guilty_user=guilty_user)
-                db.GroupViolation.delete().where(db.GroupViolation.user_id == guilty_user.id).execute()
-                return
-        except peewee.DoesNotExist:
-            db.GroupViolation.create(user_id=guilty_user.id, violation_quantity=1)
-        finally:
-            user_db = db.GroupViolation.select().where(db.GroupViolation.user_id == guilty_user.id).get()
-
-            if user_db.violation_quantity == acceptable_warning_quantity:
-                await guilty_user.send_message(
-                    text=f'Вам вынесено предупреждение вследствие нарушения правил группы '
-                         f'"НеймХолдер" вашим сообщением:'
-                )
-                await update.message.reply_to_message.copy(chat_id=guilty_user.id)
-                await guilty_user.send_message(
-                    text=f'Внимание! Это - крайнее предупреждение, следующее нарушение правил приведёт к исключению '
-                         f'из группы'
-                )
-
-            else:
-                await guilty_user.send_message(
-                    text=f'Вам вынесено предупреждение вследствие нарушения правил группы '
-                         f'"НеймХолдер" вашим сообщением:'
-                )
-                await update.message.reply_to_message.copy(chat_id=guilty_user.id)
-                await guilty_user.send_message(
-                    text=f'Дальнейшее игнорирование предписаний может повлечь за собой исключение из группы, '
-                         f'будьте внимательны!'
-                )
-
-            await update.message.reply_to_message.delete()
-            await update.message.delete()
+        await warning_sample(update=update, guilty_user=guilty_user, guilty_message=guilty_message)
 
 
 async def banning_sample(update, guilty_user):
@@ -219,6 +183,48 @@ async def banning_sample(update, guilty_user):
     await update.message.reply_to_message.delete()
     await update.message.delete()
     await update.effective_chat.ban_member(user_id=guilty_user.id)
+
+
+async def warning_sample(update, guilty_user, guilty_message):
+    try:
+        user_db = db.GroupViolation.select().where(db.GroupViolation.user_id == guilty_user.id).get()
+        user_db.violation_quantity += 1
+        user_db.save()
+
+        if user_db.violation_quantity > ACCEPTABLE_WARNING_QUANTITY:
+            await banning_sample(update=update, guilty_user=guilty_user)
+            db.GroupViolation.delete().where(db.GroupViolation.user_id == guilty_user.id).execute()
+            return
+    except peewee.DoesNotExist:
+        db.GroupViolation.create(user_id=guilty_user.id, violation_quantity=1)
+    finally:
+        user_db = db.GroupViolation.select().where(db.GroupViolation.user_id == guilty_user.id).get()
+
+        if user_db.violation_quantity == ACCEPTABLE_WARNING_QUANTITY:
+            await guilty_user.send_message(
+                text=f'Вам вынесено предупреждение вследствие нарушения правил группы '
+                     f'"НеймХолдер" вашим сообщением:'
+            )
+            await guilty_message.copy(chat_id=guilty_user.id)
+            await guilty_user.send_message(
+                text=f'Внимание! Это - крайнее предупреждение, следующее нарушение правил приведёт к исключению '
+                     f'из группы'
+            )
+
+        else:
+            await guilty_user.send_message(
+                text=f'Вам вынесено предупреждение вследствие нарушения правил группы '
+                     f'"НеймХолдер" вашим сообщением:'
+            )
+            await guilty_message.copy(chat_id=guilty_user.id)
+            await guilty_user.send_message(
+                text=f'Дальнейшее игнорирование предписаний может повлечь за собой исключение из группы, '
+                     f'будьте внимательны!'
+            )
+
+        if guilty_message != update.message:
+            await guilty_message.delete()
+        await update.message.delete()
 
 
 async def new_user_restrict(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -325,6 +331,21 @@ async def private_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     command_dict=new_menu_chat_admin,
                     scope=BotCommandScopeChat(chat_id=update.effective_chat.id)
                 )
+    else:
+        try:
+            message_text = update.effective_message.text.lower()
+            for bad_word in FORBIDDEN_WORDS:
+                word_pattern = f'[\\W]{bad_word}[\\W]|[\\W]{bad_word}|{bad_word}[\\W]|{bad_word}'
+                matched = re.search(word_pattern, message_text)
+                if matched:
+                    await warning_sample(
+                        update=update,
+                        guilty_user=update.effective_user,
+                        guilty_message=update.effective_message
+                    )
+                    break
+        except TypeError:
+            pass
 
 
 async def menu_button(update: Update, context: ContextTypes.DEFAULT_TYPE, command_dict, scope):
@@ -346,11 +367,13 @@ def main():
     close_handler = CommandHandler('close', admin_conversation_over)
     ban_handler = CommandHandler('ban', ban_user)
     warning_handler = CommandHandler('warn', warn_user)
+    delete_handler = CommandHandler('delete', delete_chat_message)
     button_handler = CallbackQueryHandler(button)
     new_member_handler = ChatMemberHandler(new_user_restrict, ChatMemberHandler.CHAT_MEMBER)
     private_message_handler = MessageHandler((~filters.COMMAND), private_message)
 
-    application.add_handlers([start_handler, help_handler, logout_handler, close_handler, ban_handler, warning_handler])
+    application.add_handlers([start_handler, help_handler, logout_handler, delete_handler,
+                              close_handler, ban_handler, warning_handler])
     application.add_handler(button_handler)
     application.add_handler(new_member_handler)
     application.add_handler(private_message_handler)
