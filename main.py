@@ -9,6 +9,7 @@ import re
 import db
 from settings import TOKEN, SCENARIOS, FORBIDDEN_WORDS, ACCEPTABLE_WARNING_QUANTITY
 from private_message_handler import private_messages_handler, start_scenario, private_attachments_handler
+from sheet_record import sheet_init, sheet_append
 
 from telegram import (
     Update, InlineQueryResultArticle, InputTextMessageContent, BotCommand, BotCommandScopeAllPrivateChats,
@@ -27,7 +28,7 @@ def db_init():
     database = peewee.SqliteDatabase('db\\db.db')
     db.database_proxy.initialize(database)
 
-    database.create_tables([db.UserConversation, db.AdminLogin, db.GroupViolation], safe=True)
+    database.create_tables([db.UserConversation, db.AdminLogin, db.GroupViolation, db.SheetInfo], safe=True)
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -67,10 +68,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             scope=BotCommandScopeAllChatAdministrators()
         )
 
-    # command1 = BotCommand(command='start', description='Начните отсюда, чтоб выбрать действие.')
-    # command2 = BotCommand(command='help', description='Краткое описание возможностей бота.')
-    # await context.bot.set_my_commands([command1, command2])
-    # await update.effective_user.set_menu_button(menu_button=MenuButtonCommands())
+        try:
+            db.UserConversation.delete().where(db.UserConversation.user_id == update.effective_user.id).execute()
+        except peewee.DoesNotExist:
+            pass
 
 
 async def help(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -123,6 +124,7 @@ async def admin_conversation_over(update: Update, context: ContextTypes.DEFAULT_
             if admin_db.scenario_name == 'Администратор':
                 if admin_db.step_name == 'step2':
                     customer_id = admin_db.context['customer_id']
+                    customer_link = admin_db.context['customer_link']
                     customer_db = db.UserConversation.select().where(db.UserConversation.user_id == customer_id).get()
 
                     admin_db.step_name = SCENARIOS[admin_db.scenario_name]['first_step']
@@ -138,6 +140,18 @@ async def admin_conversation_over(update: Update, context: ContextTypes.DEFAULT_
                         chat_id=customer_id,
                         text='Благодарим за обращение. \nОстались ли вы довольны общением? '
                              'Напишите "1", если да,''"0" - если нет.'
+                    )
+
+                    color_dict = {'r': 1, 'b': -190}
+                    datetime_now = datetime.datetime.now().strftime('%d.%m.%Y %H:%M:%S')
+                    admin_login = db.AdminLogin.select().where(db.AdminLogin.user_id == user.id).get().login
+                    sheet_append(
+                        date=datetime_now.split(" ")[0],
+                        time=datetime_now.split(' ')[1],
+                        event='ОБРАЩЕНИЕ',
+                        admin=admin_login,
+                        context=f'Юзер: {customer_link}\nКомментарий: {" ".join(context.args)}',
+                        color_dict=color_dict
                     )
                 else:
                     await update.effective_user.send_message(text='У вас нет активных диалогов.')

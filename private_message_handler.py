@@ -89,11 +89,6 @@ async def continue_scenario(message, user_in_db, user, dispatch_dict):
             user_in_db.save()
         else:
             db.UserConversation.delete().where(db.UserConversation.user_id == user.id).execute()
-        #     user_in_db.step_name = None
-        #     user_in_db.scenario_name = None
-        #     user_in_db.context = {'messages': []}
-        #
-        # user_in_db.save()
 
 
 async def general_step_handler(user_id, dispatch_dict, step, scenario_name):

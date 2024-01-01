@@ -35,6 +35,7 @@ async def admin_receiver(user, message, user_in_db, dispatch_dict, **kwargs):
             admin_id = admin.user_id
             admin.step_name = SCENARIOS[admin.scenario_name]['steps'][admin.step_name]['next_step']
             admin.context['customer_id'] = message.chat_id
+            admin.context['customer_link'] = user.link
             admin.save()
 
             dispatch_dict['message_list'] = user_in_db.context['messages']

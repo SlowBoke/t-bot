@@ -1,5 +1,9 @@
 TOKEN =
 
+TOKEN_SHEET =
+
+ACCEPTABLE_WARNING_QUANTITY =
+
 INTENTS = [
     {
         'name': 'Приветствие',
@@ -39,33 +43,67 @@ INTENTS = [
         'answer': 'До встречи на РобоФесте!'
     },
 ]
+
 SCENARIOS = {
-    'registration': {
+    'Задать вопрос': {
         'first_step': 'step1',
         'steps': {
             'step1': {
-                'text': 'Для регистрации введите ваше имя. Оно будет написано на бейджике.',
-                'failure_text': 'Имя должно состоять из 3-40 символов. Повторите попытку.',
-                'handler': 'handle_name',
+                'handler': None,
+                'message': 'Задайте интересующий вас вопрос:',
                 'next_step': 'step2'
             },
             'step2': {
-                'text': 'Введите email, на который будет отправлен билет.',
-                'failure_text': 'Во введённом адресе присутствует ошибка, попробуйте ещё раз.',
-                'handler': 'handle_email',
+                'handler': 'admin_receiver',
                 'next_step': 'step3'
             },
             'step3': {
-                'text': 'Спасибо за регистрацию, {name}! Я сейчас скину билет сообщением ниже, '
-                        'а также продублирую его на {email}. Не забудьте его распечатать.',
-                'image': 'generate_ticket_handler',
-                'failure_text': None,
-                'handler': None,
+                'handler': 'rating_handler',
+                'message1': 'Спасибо за оценку.',
+                'message0': 'Сожалеем, мы учтём ваш опыт в будущем.',
                 'next_step': None
-            }
+            },
+        }
+    },
+    'Авторизация': {
+        'first_step': 'step1',
+        'steps': {
+            'step1': {
+                'handler': None,
+                'message': 'Вход в режим модератора. Введите логин:',
+                'next_step': 'step2'
+            },
+            'step2': {
+                'handler': 'login_handler',
+                'message': 'Введите логин:',
+                'message_failure': 'Неверный логин.',
+                'next_step': 'step3'
+            },
+            'step3': {
+                'handler': 'password_handler',
+                'message': 'Введите пароль:',
+                'message_failure': 'Неверный пароль.',
+                'message_final': 'Добро пожаловать, {admin_name}.',
+                'next_step': None
+            },
+        }
+    },
+    'Администратор': {
+        'first_step': 'step1',
+        'steps': {
+            'step1': {
+                'handler': None,
+                'next_step': 'step2'
+            },
+            'step2': {
+                'handler': 'customer_receiver',
+                'next_step': None
+            },
         }
     }
 }
+
+FORBIDDEN_WORDS = []
 
 DEFAULT_ANSWER = 'Не готов ответить на этот вопрос. ' \
                  'Зато я готов зарегистрировать вас на РобоФест и уточнить время и место проведения.'

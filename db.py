@@ -30,3 +30,7 @@ class AdminLogin(BaseModel):
 class GroupViolation(BaseModel):
     user_id = peewee.IntegerField(unique=True)
     violation_quantity = peewee.IntegerField()
+
+
+class SheetInfo(BaseModel):
+    cur_row = peewee.IntegerField()
