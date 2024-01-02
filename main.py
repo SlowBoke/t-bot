@@ -45,28 +45,30 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         await update.message.reply_text('Пожалуйста, выберите:', reply_markup=reply_markup)
 
-        new_menu_chat = {
-            'start': 'Начните отсюда, чтобы выбрать действие.',
-            'help': 'Краткое описание возможностей бота.'
-        }
-        new_menu_group_admin = {
-            'ban': 'Забанить пользователя.',
-            'warn': 'Вынести пользователю предупреждение.',
-            'delete': 'Удалить сообщение.'
-        }
+        ### First launch menu button setup ###
 
-        await menu_button(
-            update=update,
-            context=context,
-            command_dict=new_menu_chat,
-            scope=BotCommandScopeAllPrivateChats()
-        )
-        await menu_button(
-            update=update,
-            context=context,
-            command_dict=new_menu_group_admin,
-            scope=BotCommandScopeAllChatAdministrators()
-        )
+        # new_menu_chat = {
+        #     'start': 'Начните отсюда, чтобы выбрать действие.',
+        #     'help': 'Краткое описание возможностей бота.'
+        # }
+        # new_menu_group_admin = {
+        #     'ban': 'Забанить пользователя.',
+        #     'warn': 'Вынести пользователю предупреждение.',
+        #     'delete': 'Удалить сообщение.'
+        # }
+        #
+        # await menu_button(
+        #     update=update,
+        #     context=context,
+        #     command_dict=new_menu_chat,
+        #     scope=BotCommandScopeAllPrivateChats()
+        # )
+        # await menu_button(
+        #     update=update,
+        #     context=context,
+        #     command_dict=new_menu_group_admin,
+        #     scope=BotCommandScopeAllChatAdministrators()
+        # )
 
         try:
             db.UserConversation.delete().where(db.UserConversation.user_id == update.effective_user.id).execute()
@@ -109,6 +111,15 @@ async def admin_logout(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     command_dict=new_menu_chat,
                     scope=BotCommandScopeChat(chat_id=update.effective_chat.id)
                 )
+
+                color_dict = {'g': 1, 'b': 1}
+                admin_login = db.AdminLogin.select().where(
+                    db.AdminLogin.user_id == update.effective_user.id).get().login
+                sheet_append(
+                    event='ВЫХОД',
+                    admin=admin_login,
+                    color_dict=color_dict
+                )
             else:
                 await update.effective_user.send_message(text='Вы не являетесь модератором.')
         except peewee.DoesNotExist:
@@ -142,12 +153,9 @@ async def admin_conversation_over(update: Update, context: ContextTypes.DEFAULT_
                              'Напишите "1", если да,''"0" - если нет.'
                     )
 
-                    color_dict = {'r': 1, 'b': -190}
-                    datetime_now = datetime.datetime.now().strftime('%d.%m.%Y %H:%M:%S')
+                    color_dict = {'g': 1}
                     admin_login = db.AdminLogin.select().where(db.AdminLogin.user_id == user.id).get().login
                     sheet_append(
-                        date=datetime_now.split(" ")[0],
-                        time=datetime_now.split(' ')[1],
                         event='ОБРАЩЕНИЕ',
                         admin=admin_login,
                         context=f'Юзер: {customer_link}\nКомментарий: {" ".join(context.args)}',
@@ -175,6 +183,15 @@ async def ban_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         await banning_sample(update=update, guilty_user=guilty_user)
 
+        color_dict = {'r': 1}
+        admin_login = db.AdminLogin.select().where(db.AdminLogin.user_id == update.effective_user.id).get().login
+        sheet_append(
+            event='БАН',
+            admin=admin_login,
+            context=f'Юзер: {guilty_user.link}\nКомментарий: {" ".join(context.args)}',
+            color_dict=color_dict
+        )
+
 
 async def warn_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_admins = await update.effective_chat.get_administrators()
@@ -183,6 +200,15 @@ async def warn_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
         guilty_message = update.message.reply_to_message
 
         await warning_sample(update=update, guilty_user=guilty_user, guilty_message=guilty_message)
+
+        color_dict = {'r': 1, 'g': -125}
+        admin_login = db.AdminLogin.select().where(db.AdminLogin.user_id == update.effective_user.id).get().login
+        sheet_append(
+            event='ПРЕДУПРЕЖДЕНИЕ',
+            admin=admin_login,
+            context=f'Юзер: {guilty_user.link}\nКомментарий: {" ".join(context.args)}',
+            color_dict=color_dict
+        )
 
 
 async def banning_sample(update, guilty_user):
@@ -266,7 +292,7 @@ async def new_user_restrict(update: Update, context: ContextTypes.DEFAULT_TYPE):
             datetime_restricted = datetime_now + datetime.timedelta(minutes=1)
             new_user_id = update.chat_member.new_chat_member.user.id
             permissions_new = ChatPermissions(
-                can_send_messages=False,
+                can_send_messages=True,
                 can_send_polls=False,
                 can_send_other_messages=False,
                 can_add_web_page_previews=False,
@@ -346,6 +372,7 @@ async def private_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     scope=BotCommandScopeChat(chat_id=update.effective_chat.id)
                 )
     else:
+        # words filter for groups/channels
         try:
             message_text = update.effective_message.text.lower()
             for bad_word in FORBIDDEN_WORDS:
@@ -356,6 +383,14 @@ async def private_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         update=update,
                         guilty_user=update.effective_user,
                         guilty_message=update.effective_message
+                    )
+
+                    color_dict = {'r': 1, 'b': 1}
+                    sheet_append(
+                        event='ФИЛЬТР',
+                        admin=None,
+                        context=f'Юзер: {update.effective_user.link}\nСлово: {matched}',
+                        color_dict=color_dict
                     )
                     break
         except TypeError:

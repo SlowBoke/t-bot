@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 
+import datetime
 import googleapiclient.discovery
 from google.oauth2.credentials import Credentials
 
@@ -13,8 +14,11 @@ def sheet_init():
     return googleapiclient.discovery.build("sheets", "v4", credentials=creds)
 
 
-def sheet_append(date, time, event, admin, color_dict, context=None):
+def sheet_append(event, admin, color_dict, context=None):
     sheet_db = db.SheetInfo.select().get()
+
+    datetime_now = datetime.datetime.now().strftime('%d.%m.%Y %H:%M:%S')
+    date, time = datetime_now.split(" ")
 
     service = sheet_init()
     row = [date, time, event, admin, context]
@@ -27,7 +31,13 @@ def sheet_append(date, time, event, admin, color_dict, context=None):
                     'blue': color_handler(color='b', color_dict=color_dict, col_index=row.index(col))
                 },
                 'borders': {
-                    'top': {
+                    'bottom': {
+                        'style': 'SOLID_MEDIUM'
+                    },
+                    'left': {
+                        'style': 'SOLID_MEDIUM'
+                    },
+                    'right': {
                         'style': 'SOLID_MEDIUM'
                     }
                 }

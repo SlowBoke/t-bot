@@ -8,6 +8,7 @@ import telegram
 
 import db
 from settings import SCENARIOS
+from sheet_record import sheet_append
 
 from random import random
 
@@ -107,6 +108,13 @@ async def password_handler(message, user_in_db, dispatch_dict, step, **kwargs):
         user_in_db.step_name = SCENARIOS[new_scenario]['first_step']
         user_in_db.context = {'messages': []}
         user_in_db.save()
+
+        color_dict = {'g': 1, 'b': 1}
+        sheet_append(
+            event='ВХОД',
+            admin=admin.login,
+            color_dict=color_dict
+        )
 
 
 async def rating_handler(message, user_in_db, dispatch_dict, steps, step, **kwargs):
