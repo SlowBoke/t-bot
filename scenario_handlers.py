@@ -22,38 +22,53 @@ async def admin_receiver(user, message, user_in_db, dispatch_dict, **kwargs):
     text_new_task = 'Новое обращение от пользователя {user_link}:'.format(user_link=user.link)
 
     if 'admin_id' in user_in_db.context:
-        admin_id = user_in_db.context['admin_id']
+        dispatch_dict['receiver_id'] = user_in_db.context['admin_id']
         dispatch_dict['message_list'] = []
     else:
         try:
-            admin = db.UserConversation.select().where(
-                db.UserConversation.scenario_name == 'Администратор' and
-                db.UserConversation.step_name == 'step1'
-            ).get()
-
-            # TODO: разобраться с числом админов
-            # admin = admins_ready.get()  # _list.sort(key=lambda args: random())[0]
-            admin_id = admin.user_id
-            admin.step_name = SCENARIOS[admin.scenario_name]['steps'][admin.step_name]['next_step']
-            admin.context['customer_id'] = message.chat_id
-            admin.context['customer_link'] = user.link
-            admin.save()
-
-            dispatch_dict['message_list'] = user_in_db.context['messages']
-            dispatch_dict['text_list'] = [text_new_task]
-
-            user_in_db.context['admin_id'] = admin_id
-            user_in_db.context['messages'] = []
-            user_in_db.save()
+            admin = await connect_to_admin(user, message, user_in_db, dispatch_dict, text_new_task)
+            await user.send_message(text=f'Запрос принят и рассматривается. '
+                                         f'С вами будет общаться наш модератор {admin.admin_name}.')
         except peewee.DoesNotExist:
             await user.send_message(text='В данный момент все модераторы заняты. Пожалуйста, подождите.')
-            # TODO: message will be sent every 30 sec. Should correct that
-            await asyncio.sleep(30)
-            return await admin_receiver(user, message, user_in_db, dispatch_dict, **kwargs)
+            while True:
+                await asyncio.sleep(10)
+                try:
+                    admin = await connect_to_admin(user, message, user_in_db, dispatch_dict, text_new_task)
+                    await user.send_message(text=f'Запрос принят и рассматривается. '
+                                                 f'С вами будет общаться наш модератор {admin.admin_name}.')
+                    break
+                except peewee.DoesNotExist:
+                    pass
+        dispatch_dict['receiver_id'] = admin.user_id
 
     dispatch_dict['message_list'].append(message.id)
-    dispatch_dict['receiver_id'] = admin_id
     dispatch_dict['same_step'] = True
+
+
+async def connect_to_admin(user, message, user_in_db, dispatch_dict, text_new_task):
+    admin = db.UserConversation.select().where(
+        db.UserConversation.scenario_name == 'Администратор' and
+        db.UserConversation.step_name == 'step1'
+    ).get()
+
+    admin_db = db.AdminLogin.select().where(db.AdminLogin.user_id == admin.user_id).get()
+
+    # TODO: разобраться с числом админов
+    # admin = admins_ready.get()  # _list.sort(key=lambda args: random())[0]
+    admin.step_name = SCENARIOS[admin.scenario_name]['steps'][admin.step_name]['next_step']
+    admin.context['customer_id'] = message.chat_id
+    admin.context['customer_link'] = user.link
+    admin.save()
+
+    dispatch_dict['message_list'] = user_in_db.context['messages']
+    dispatch_dict['text_list'] = [text_new_task]
+
+    user_in_db.context['admin_id'] = admin.user_id
+    user_in_db.context['messages'] = []
+    user_in_db.save()
+
+    return admin_db
 
 
 async def customer_receiver(user, message, user_in_db, dispatch_dict, **kwargs):
