@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import csv
 
 import peewee
 import telegram
@@ -70,11 +71,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         #     scope=BotCommandScopeAllChatAdministrators()
         # )
 
-        try:
-            db.UserConversation.delete().where(db.UserConversation.user_id == update.effective_user.id).execute()
-        except peewee.DoesNotExist:
-            pass
-
 
 async def help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_chat.type == 'private':
@@ -99,6 +95,7 @@ async def admin_logout(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     await admin_conversation_over(update=update, context=context)
 
                 db.UserConversation.delete().where(db.UserConversation.user_id == user.id).execute()
+
                 await update.effective_user.send_message(text='Выход произведён, всего доброго.')
 
                 new_menu_chat = {
@@ -120,6 +117,10 @@ async def admin_logout(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     admin=admin_login,
                     color_dict=color_dict
                 )
+
+                admin_db = db.AdminLogin.select().where(db.AdminLogin.user_id == user.id).get()
+                admin_db.user_id = 0
+                admin_db.save()
             else:
                 await update.effective_user.send_message(text='Вы не являетесь модератором.')
         except peewee.DoesNotExist:
@@ -196,33 +197,43 @@ async def ban_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def warn_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_admins = await update.effective_chat.get_administrators()
     if update.effective_user in (admin.user for admin in chat_admins):
-        guilty_user = update.message.reply_to_message.from_user
-        guilty_message = update.message.reply_to_message
+        try:
+            db.UserConversation.select().where(
+                db.UserConversation.user_id == update.effective_user.id
+                and db.UserConversation.scenario_name == 'Администратор'
+            ).get()
+            guilty_user = update.message.reply_to_message.from_user
+            guilty_message = update.message.reply_to_message
 
-        await warning_sample(update=update, guilty_user=guilty_user, guilty_message=guilty_message)
+            await warning_sample(update=update, guilty_user=guilty_user, guilty_message=guilty_message)
 
-        color_dict = {'r': 1, 'g': -125}
-        admin_login = db.AdminLogin.select().where(db.AdminLogin.user_id == update.effective_user.id).get().login
-        sheet_append(
-            event='ПРЕДУПРЕЖДЕНИЕ',
-            admin=admin_login,
-            context=f'Юзер: {guilty_user.link}\nКомментарий: {" ".join(context.args)}',
-            color_dict=color_dict
-        )
+            color_dict = {'r': 1, 'g': -125}
+            admin_login = db.AdminLogin.select().where(db.AdminLogin.user_id == update.effective_user.id).get().login
+            sheet_append(
+                event='ПРЕДУПРЕЖДЕНИЕ',
+                admin=admin_login,
+                context=f'Юзер: {guilty_user.link}\nКомментарий: {" ".join(context.args)}',
+                color_dict=color_dict
+            )
+        except peewee.DoesNotExist:
+            pass
 
 
 async def banning_sample(update, guilty_user):
     await guilty_user.send_message(
-        text=f'Вы были исключены из группы "НеймХолдер", причиной послужило ваше сообщение:'
+        text=f'Вы были исключены из группы "НеймХолдер", Для восстановления в группе обратитесь к модератору '
+             f'посредством данного бота. Причиной послужило ваше сообщение:'
     )
     await update.message.reply_to_message.copy(chat_id=guilty_user.id)
-    await guilty_user.send_message(
-        text=f'Для восстановления в группе обратитесь к модератору посредством данного бота.'
-    )
 
     await update.message.reply_to_message.delete()
     await update.message.delete()
     await update.effective_chat.ban_member(user_id=guilty_user.id)
+
+    try:
+        db.GroupViolation.delete().where(db.GroupViolation.user_id == guilty_user.id).execute()
+    except peewee.DoesNotExist:
+        pass
 
 
 async def warning_sample(update, guilty_user, guilty_message):
@@ -233,7 +244,6 @@ async def warning_sample(update, guilty_user, guilty_message):
 
         if user_db.violation_quantity > ACCEPTABLE_WARNING_QUANTITY:
             await banning_sample(update=update, guilty_user=guilty_user)
-            db.GroupViolation.delete().where(db.GroupViolation.user_id == guilty_user.id).execute()
             return
     except peewee.DoesNotExist:
         db.GroupViolation.create(user_id=guilty_user.id, violation_quantity=1)
@@ -242,25 +252,18 @@ async def warning_sample(update, guilty_user, guilty_message):
 
         if user_db.violation_quantity == ACCEPTABLE_WARNING_QUANTITY:
             await guilty_user.send_message(
-                text=f'Вам вынесено предупреждение вследствие нарушения правил группы '
-                     f'"НеймХолдер" вашим сообщением:'
+                text=f'Внимание! Это - крайнее предупреждение, следующее нарушение правил приведёт к исключению '
+                     f'из группы "НеймХолдер".\nВаше сообщение:'
             )
             await guilty_message.copy(chat_id=guilty_user.id)
-            await guilty_user.send_message(
-                text=f'Внимание! Это - крайнее предупреждение, следующее нарушение правил приведёт к исключению '
-                     f'из группы'
-            )
 
         else:
             await guilty_user.send_message(
-                text=f'Вам вынесено предупреждение вследствие нарушения правил группы '
-                     f'"НеймХолдер" вашим сообщением:'
+                text=f'Вам вынесено предупреждение вследствие нарушения правил группы "НеймХолдер"\n'
+                     f'Дальнейшее игнорирование предписаний может повлечь за собой исключение из группы, '
+                     f'будьте внимательны!\nВаше сообщение:'
             )
             await guilty_message.copy(chat_id=guilty_user.id)
-            await guilty_user.send_message(
-                text=f'Дальнейшее игнорирование предписаний может повлечь за собой исключение из группы, '
-                     f'будьте внимательны!'
-            )
 
         if guilty_message != update.message:
             await guilty_message.delete()
@@ -357,7 +360,7 @@ async def private_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         attachment=attachment,
                         receiver_id=dispatch_dict['receiver_id']
                     )
-            if 'start' in dispatch_dict:
+            if 'advice' in dispatch_dict:
                 await start(update=update, context=context)
             if 'menu_change' in dispatch_dict:
                 new_menu_chat_admin = {
@@ -371,30 +374,42 @@ async def private_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     command_dict=new_menu_chat_admin,
                     scope=BotCommandScopeChat(chat_id=update.effective_chat.id)
                 )
+            if 'delete_message' in dispatch_dict:
+                await update.effective_message.delete()
+            if 'login' in dispatch_dict:
+                color_dict = {'g': 1, 'b': 1}
+                sheet_append(
+                    event='ВХОД',
+                    admin=dispatch_dict['login'],
+                    color_dict=color_dict
+                )
     else:
         # words filter for groups/channels
         try:
             message_text = update.effective_message.text.lower()
-            for bad_word in FORBIDDEN_WORDS:
-                word_pattern = f'[\\W]{bad_word}[\\W]|[\\W]{bad_word}|{bad_word}[\\W]|{bad_word}'
-                matched = re.search(word_pattern, message_text)
-                if matched:
-                    await warning_sample(
-                        update=update,
-                        guilty_user=update.effective_user,
-                        guilty_message=update.effective_message
-                    )
+            with open('bad_words.csv', 'r', newline='', encoding='utf8') as csv_file:
+                csv_data = csv.reader(csv_file)
+                for bad_word in csv_data:
+                    word_pattern = f'[\\W]{bad_word[0]}[\\W]|[\\W]{bad_word[0]}|{bad_word[0]}[\\W]|^{bad_word[0]}$'
+                    matched = re.search(word_pattern, message_text)
+                    if matched:
+                        await warning_sample(
+                            update=update,
+                            guilty_user=update.effective_user,
+                            guilty_message=update.effective_message
+                        )
 
-                    color_dict = {'r': 1, 'b': 1}
-                    sheet_append(
-                        event='ФИЛЬТР',
-                        admin=None,
-                        context=f'Юзер: {update.effective_user.link}\nСлово: {matched}',
-                        color_dict=color_dict
-                    )
-                    break
+                        color_dict = {'r': 1, 'b': 1}
+                        sheet_append(
+                            event='ФИЛЬТР',
+                            admin=None,
+                            context=f'Юзер: {update.effective_user.link}\nСлово: {bad_word}',
+                            color_dict=color_dict
+                        )
+                        break
         except TypeError:
             pass
+        print('end')
 
 
 async def menu_button(update: Update, context: ContextTypes.DEFAULT_TYPE, command_dict, scope):

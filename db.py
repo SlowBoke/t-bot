@@ -24,7 +24,7 @@ class AdminLogin(BaseModel):
     admin_name = peewee.CharField()
     login = peewee.CharField()
     password = peewee.CharField()
-    user_id = peewee.IntegerField(unique=True)
+    user_id = peewee.IntegerField()
 
 
 class GroupViolation(BaseModel):

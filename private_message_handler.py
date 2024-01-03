@@ -28,6 +28,8 @@ async def private_messages_handler(update: Update, context: ContextTypes.DEFAULT
             user_in_db.context['messages'].append(message.message_id)
             user_in_db.save()
 
+            dispatch_dict['advice'] = True
+
     else:
         new_user = db.UserConversation.create(
             user_id=user.id,
@@ -35,6 +37,7 @@ async def private_messages_handler(update: Update, context: ContextTypes.DEFAULT
             step_name='NULL',
             context={'messages': [message.message_id]}
         )
+        dispatch_dict['advice'] = True
 
 
 def start_scenario(user, scenario_name, **kwargs):
@@ -43,12 +46,13 @@ def start_scenario(user, scenario_name, **kwargs):
     step = steps[first_step_name]
     dispatch_dict = {'receiver_id': user.id}
 
-    if db.UserConversation.select().where(db.UserConversation.user_id == user.id):
+    try:
         user_in_db = db.UserConversation.select().where(db.UserConversation.user_id == user.id).get()
         user_in_db.scenario_name = scenario_name
         user_in_db.step_name = step
+        user_in_db.context = {'messages': user_in_db.context['messages']}
         user_in_db.save()
-    else:
+    except peewee.DoesNotExist:
         user_in_db = db.UserConversation.create(
             user_id=user.id,
             scenario_name=scenario_name,
@@ -98,8 +102,6 @@ async def general_step_handler(user_id, dispatch_dict, step, scenario_name):
             dispatch_dict['receiver_id'] = user_id
     elif scenario_name == 'Администратор':
         pass
-    else:
-        dispatch_dict['start'] = True
 
 
 async def private_attachments_handler(context: ContextTypes.DEFAULT_TYPE, attachment, receiver_id):

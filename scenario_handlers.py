@@ -104,6 +104,7 @@ async def password_handler(message, user_in_db, dispatch_dict, step, **kwargs):
     admin = db.AdminLogin.select().where(db.AdminLogin.login == user_in_db.context['login']).get()
     admin_name = admin.admin_name
     new_scenario = 'Администратор'
+    dispatch_dict['delete_message'] = True
 
     if message.text != admin.password:
         dispatch_dict['text_list'] = [step['message_failure']]
@@ -115,6 +116,7 @@ async def password_handler(message, user_in_db, dispatch_dict, step, **kwargs):
         dispatch_dict['receiver_id'] = user_in_db.user_id
         dispatch_dict['same_step'] = True
         dispatch_dict['menu_change'] = True
+        dispatch_dict['login'] = admin.login
 
         admin.user_id = user_in_db.user_id
         admin.save()
@@ -123,13 +125,6 @@ async def password_handler(message, user_in_db, dispatch_dict, step, **kwargs):
         user_in_db.step_name = SCENARIOS[new_scenario]['first_step']
         user_in_db.context = {'messages': []}
         user_in_db.save()
-
-        color_dict = {'g': 1, 'b': 1}
-        sheet_append(
-            event='ВХОД',
-            admin=admin.login,
-            color_dict=color_dict
-        )
 
 
 async def rating_handler(message, user_in_db, dispatch_dict, steps, step, **kwargs):
