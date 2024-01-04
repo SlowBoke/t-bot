@@ -3,9 +3,11 @@
 import datetime
 import googleapiclient.discovery
 from google.oauth2.credentials import Credentials
+from google.auth.exceptions import RefreshError
 
 import db
 from settings import TOKEN_PATH, SHEET_ID
+from g_sheets_start.quickstart import new_token
 
 
 def sheet_init():
@@ -15,68 +17,72 @@ def sheet_init():
 
 
 def sheet_append(event, admin, color_dict, context=None):
-    sheet_db = db.SheetInfo.select().get()
+    try:
+        sheet_db = db.SheetInfo.select().get()
 
-    datetime_now = datetime.datetime.now().strftime('%d.%m.%Y %H:%M:%S')
-    date, time = datetime_now.split(" ")
+        datetime_now = datetime.datetime.now().strftime('%d.%m.%Y %H:%M:%S')
+        date, time = datetime_now.split(" ")
 
-    service = sheet_init()
-    row = [date, time, event, admin, context]
-    values = [
-        {
-            'userEnteredFormat': {
-                'backgroundColor': {
-                    'red': color_handler(color='r', color_dict=color_dict, col_index=row.index(col)),
-                    'green': color_handler(color='g', color_dict=color_dict, col_index=row.index(col)),
-                    'blue': color_handler(color='b', color_dict=color_dict, col_index=row.index(col))
+        service = sheet_init()
+        row = [date, time, event, admin, context]
+        values = [
+            {
+                'userEnteredFormat': {
+                    'backgroundColor': {
+                        'red': color_handler(color='r', color_dict=color_dict, col_index=row.index(col)),
+                        'green': color_handler(color='g', color_dict=color_dict, col_index=row.index(col)),
+                        'blue': color_handler(color='b', color_dict=color_dict, col_index=row.index(col))
+                    },
+                    'borders': {
+                        'bottom': {
+                            'style': 'SOLID_MEDIUM'
+                        },
+                        'left': {
+                            'style': 'SOLID_MEDIUM'
+                        },
+                        'right': {
+                            'style': 'SOLID_MEDIUM'
+                        }
+                    }
                 },
-                'borders': {
-                    'bottom': {
-                        'style': 'SOLID_MEDIUM'
-                    },
-                    'left': {
-                        'style': 'SOLID_MEDIUM'
-                    },
-                    'right': {
-                        'style': 'SOLID_MEDIUM'
-                    }
+                'userEnteredValue': {
+                    'stringValue': col
                 }
-            },
-            'userEnteredValue': {
-                'stringValue': col
-            }
-        } for col in row
-    ]
-
-    requests = {
-        'requests': [
-            {'appendCells': {
-                'rows': [
-                    {
-                        'values': values
-                    }
-                ],
-                'fields':
-                    'userEnteredFormat, userEnteredValue', 'sheetId': 0
-            }
-            }
+            } for col in row
         ]
-    }
 
-    service.spreadsheets().batchUpdate(spreadsheetId=SHEET_ID, body=requests).execute()
+        requests = {
+            'requests': [
+                {'appendCells': {
+                    'rows': [
+                        {
+                            'values': values
+                        }
+                    ],
+                    'fields':
+                        'userEnteredFormat, userEnteredValue', 'sheetId': 0
+                }
+                }
+            ]
+        }
 
-    service.spreadsheets().values().batchUpdate(spreadsheetId=SHEET_ID, body={
-        "valueInputOption": "USER_ENTERED",
-        "data": [
-            {"range": f"Лист1!A{sheet_db.cur_row}:B{sheet_db.cur_row}",
-             "majorDimension": "ROWS",
-             "values": [[date, time]]
-             }
-        ]
-    }).execute()
+        service.spreadsheets().batchUpdate(spreadsheetId=SHEET_ID, body=requests).execute()
 
-    sheet_db.cur_row += 1
-    sheet_db.save()
+        service.spreadsheets().values().batchUpdate(spreadsheetId=SHEET_ID, body={
+            "valueInputOption": "USER_ENTERED",
+            "data": [
+                {"range": f"Лист1!A{sheet_db.cur_row}:B{sheet_db.cur_row}",
+                 "majorDimension": "ROWS",
+                 "values": [[date, time]]
+                 }
+            ]
+        }).execute()
+
+        sheet_db.cur_row += 1
+        sheet_db.save()
+    except RefreshError:
+        new_token()
+        sheet_append(event, admin, color_dict, context)
 
 
 def color_handler(color, color_dict, col_index):

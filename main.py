@@ -34,17 +34,33 @@ def db_init():
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_chat.type == 'private':
-        await update.effective_user.send_message(
-            text='Вас приветствует бот Телеграм-канала "НеймХолдер". Укажите, чем могу вам помочь.'
-        )
+        try:
+            user_db = db.UserConversation.select().where(
+                db.UserConversation.scenario_name == 'Задать вопрос' and
+                db.UserConversation.step_name == 'step2' and
+                db.UserConversation.user_id == update.effective_user.id
+            ).get()
+        except peewee.DoesNotExist:
+            user_db = None
 
-        keyboard = [
-            [InlineKeyboardButton("Задать вопрос", callback_data='Задать вопрос')],
-            [InlineKeyboardButton("Авторизоваться (админ)", callback_data='Авторизация')],
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
+        if not user_db:
+            await update.effective_user.send_message(
+                text='Вас приветствует бот Телеграм-канала "НеймХолдер". Укажите, чем могу вам помочь.'
+            )
 
-        await update.message.reply_text('Пожалуйста, выберите:', reply_markup=reply_markup)
+            keyboard = [
+                [InlineKeyboardButton("Задать вопрос", callback_data='Задать вопрос')],
+                [InlineKeyboardButton("Авторизоваться (админ)", callback_data='Авторизация')],
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+
+            await update.message.reply_text('Пожалуйста, выберите:', reply_markup=reply_markup)
+        else:
+            await update.effective_user.send_message(text='Дождитесь завершения текущего диалога.')
+            await context.bot.send_message(
+                chat_id=user_db.context['admin_id'],
+                text='Бот:\nПользователь попытался вызвать комманду "/start" в текущем активном диалоге.'
+            )
 
         ### First launch menu button setup ###
 
@@ -271,7 +287,7 @@ async def warning_sample(update, guilty_user, guilty_message):
 
 
 async def new_user_restrict(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_chat.type in ['supergroup', 'channel']:
+    if update.effective_chat.type == 'supergroup':
         chat_member_update = update.chat_member
         status_change = chat_member_update.difference().get('status')
         old_is_member, new_is_member = chat_member_update.difference().get('is_member', (None, None))
@@ -342,47 +358,46 @@ async def private_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_chat.type == 'private':
         dispatch_dict = {}
         await private_messages_handler(update=update, context=context, dispatch_dict=dispatch_dict)
-        if dispatch_dict:
-            if 'text_list' in dispatch_dict:
-                for text in dispatch_dict['text_list']:
-                    await context.bot.send_message(chat_id=dispatch_dict['receiver_id'], text=text)
-            if 'message_list' in dispatch_dict:
-                for message_id in dispatch_dict['message_list']:
-                    await context.bot.copy_message(
-                        chat_id=dispatch_dict['receiver_id'], 
-                        from_chat_id=update.message.chat_id,
-                        message_id=message_id
-                    )
-            if 'attachment_list' in dispatch_dict:
-                for attachment in dispatch_dict['attachment_list']:
-                    await private_attachments_handler(
-                        context=context,
-                        attachment=attachment,
-                        receiver_id=dispatch_dict['receiver_id']
-                    )
-            if 'advice' in dispatch_dict:
-                await start(update=update, context=context)
-            if 'menu_change' in dispatch_dict:
-                new_menu_chat_admin = {
-                    'logout': 'Выход из режима модерации.',
-                    'close': 'Завершить текущий диалог.',
-                    'help': 'Краткое описание возможностей бота.'
-                }
-                await menu_button(
-                    update=update,
+        if 'text_list' in dispatch_dict:
+            for text in dispatch_dict['text_list']:
+                await context.bot.send_message(chat_id=dispatch_dict['receiver_id'], text=text)
+        if 'message_list' in dispatch_dict:
+            for message_id in dispatch_dict['message_list']:
+                await context.bot.copy_message(
+                    chat_id=dispatch_dict['receiver_id'],
+                    from_chat_id=update.message.chat_id,
+                    message_id=message_id
+                )
+        if 'attachment_list' in dispatch_dict:
+            for attachment in dispatch_dict['attachment_list']:
+                await private_attachments_handler(
                     context=context,
-                    command_dict=new_menu_chat_admin,
-                    scope=BotCommandScopeChat(chat_id=update.effective_chat.id)
+                    attachment=attachment,
+                    receiver_id=dispatch_dict['receiver_id']
                 )
-            if 'delete_message' in dispatch_dict:
-                await update.effective_message.delete()
-            if 'login' in dispatch_dict:
-                color_dict = {'g': 1, 'b': 1}
-                sheet_append(
-                    event='ВХОД',
-                    admin=dispatch_dict['login'],
-                    color_dict=color_dict
-                )
+        if 'advice' in dispatch_dict:
+            await start(update=update, context=context)
+        if 'menu_change' in dispatch_dict:
+            new_menu_chat_admin = {
+                'logout': 'Выход из режима модерации.',
+                'close': 'Завершить текущий диалог.',
+                'help': 'Краткое описание возможностей бота.'
+            }
+            await menu_button(
+                update=update,
+                context=context,
+                command_dict=new_menu_chat_admin,
+                scope=BotCommandScopeChat(chat_id=update.effective_chat.id)
+            )
+        if 'delete_message' in dispatch_dict:
+            await update.effective_message.delete()
+        if 'login' in dispatch_dict:
+            color_dict = {'g': 1, 'b': 1}
+            sheet_append(
+                event='ВХОД',
+                admin=dispatch_dict['login'],
+                color_dict=color_dict
+            )
     else:
         # words filter for groups/channels
         try:
