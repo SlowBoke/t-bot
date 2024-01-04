@@ -390,7 +390,7 @@ async def private_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             with open('bad_words.csv', 'r', newline='', encoding='utf8') as csv_file:
                 csv_data = csv.reader(csv_file)
                 for bad_word in csv_data:
-                    word_pattern = f'[\\W]{bad_word[0]}[\\W]|[\\W]{bad_word[0]}|{bad_word[0]}[\\W]|^{bad_word[0]}$'
+                    word_pattern = f'[\\W]{bad_word[0]}[\\W]|[\\W]{bad_word[0]}$|^{bad_word[0]}[\\W]|^{bad_word[0]}$'
                     matched = re.search(word_pattern, message_text)
                     if matched:
                         await warning_sample(
@@ -409,7 +409,8 @@ async def private_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         break
         except TypeError:
             pass
-        print('end')
+        except AttributeError:
+            pass
 
 
 async def menu_button(update: Update, context: ContextTypes.DEFAULT_TYPE, command_dict, scope):
