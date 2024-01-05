@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 
 import datetime
+import os
+
 import googleapiclient.discovery
 from google.oauth2.credentials import Credentials
 from google.auth.exceptions import RefreshError
@@ -80,10 +82,10 @@ def sheet_append(event, admin, color_dict, context=None):
 
         sheet_db.cur_row += 1
         sheet_db.save()
-    except RefreshError:
+    except (RefreshError, FileNotFoundError):
+        os.remove('token.json')
         new_token()
         sheet_append(event, admin, color_dict, context)
-
 
 def color_handler(color, color_dict, col_index):
     if color in color_dict:
