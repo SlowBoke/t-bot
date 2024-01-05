@@ -8,7 +8,7 @@ import datetime
 import re
 
 import db
-from settings import TOKEN, SCENARIOS, FORBIDDEN_WORDS, ACCEPTABLE_WARNING_QUANTITY
+from settings import TOKEN, SCENARIOS, ACCEPTABLE_WARNING_QUANTITY
 from private_message_handler import private_messages_handler, start_scenario, private_attachments_handler
 from sheet_record import sheet_init, sheet_append
 
@@ -31,7 +31,7 @@ def db_init():
 
     database.create_tables([db.UserConversation, db.AdminLogin, db.GroupViolation, db.SheetInfo], safe=True)
 
-    admin_list = [{'admin_name': '', 'login': 'mainadmin', 'password': '2468admin'}]
+    admin_list = [{'admin_name': 'Кирилл', 'login': 'mainadmin', 'password': '2468admin'}]
     for admin in admin_list:
         try:
             db.AdminLogin.select().where(db.AdminLogin.login == admin['login']).get()
@@ -48,14 +48,14 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_chat.type == 'private':
         try:
             user_db = db.UserConversation.select().where(
-                db.UserConversation.scenario_name == 'Задать вопрос' and
-                db.UserConversation.step_name == 'step2' and
-                db.UserConversation.user_id == update.effective_user.id
+                (db.UserConversation.scenario_name == 'Задать вопрос') &
+                (db.UserConversation.step_name == 'step2') &
+                (db.UserConversation.user_id == update.effective_user.id)
             ).get()
         except peewee.DoesNotExist:
             user_db = None
 
-        if not user_db:
+        if user_db is None:
             await update.effective_user.send_message(
                 text='Вас приветствует бот Телеграм-канала "НеймХолдер". Укажите, чем могу вам помочь.'
             )
