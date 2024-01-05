@@ -1,6 +1,8 @@
 TOKEN =
 
-TOKEN_SHEET =
+TOKEN_PATH =
+
+SHEET_ID =
 
 ACCEPTABLE_WARNING_QUANTITY =
 
@@ -102,8 +104,3 @@ SCENARIOS = {
         }
     }
 }
-
-FORBIDDEN_WORDS = []
-
-DEFAULT_ANSWER = 'Не готов ответить на этот вопрос. ' \
-                 'Зато я готов зарегистрировать вас на РобоФест и уточнить время и место проведения.'

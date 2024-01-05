@@ -26,10 +26,22 @@ from telegram.ext import (
 
 def db_init():
     """Initialising the database"""
-    database = peewee.SqliteDatabase('db\\db.db')
+    database = peewee.SqliteDatabase('data\\db\\db.db')
     db.database_proxy.initialize(database)
 
     database.create_tables([db.UserConversation, db.AdminLogin, db.GroupViolation, db.SheetInfo], safe=True)
+
+    admin_list = [{'admin_name': '', 'login': 'mainadmin', 'password': '2468admin'}]
+    for admin in admin_list:
+        try:
+            db.AdminLogin.select().where(db.AdminLogin.login == admin['login']).get()
+        except peewee.DoesNotExist:
+            db.AdminLogin.create(user_id=0, **admin)
+
+    try:
+        db.SheetInfo.select().where(db.SheetInfo.cur_row != 0).get()
+    except peewee.DoesNotExist:
+        db.SheetInfo.create(cur_row=2)
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -64,28 +76,28 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         ### First launch menu button setup ###
 
-        # new_menu_chat = {
-        #     'start': 'Начните отсюда, чтобы выбрать действие.',
-        #     'help': 'Краткое описание возможностей бота.'
-        # }
-        # new_menu_group_admin = {
-        #     'ban': 'Забанить пользователя.',
-        #     'warn': 'Вынести пользователю предупреждение.',
-        #     'delete': 'Удалить сообщение.'
-        # }
-        #
-        # await menu_button(
-        #     update=update,
-        #     context=context,
-        #     command_dict=new_menu_chat,
-        #     scope=BotCommandScopeAllPrivateChats()
-        # )
-        # await menu_button(
-        #     update=update,
-        #     context=context,
-        #     command_dict=new_menu_group_admin,
-        #     scope=BotCommandScopeAllChatAdministrators()
-        # )
+        new_menu_chat = {
+            'start': 'Начните отсюда, чтобы выбрать действие.',
+            'help': 'Краткое описание возможностей бота.'
+        }
+        new_menu_group_admin = {
+            'ban': 'Забанить пользователя.',
+            'warn': 'Вынести пользователю предупреждение.',
+            'delete': 'Удалить сообщение.'
+        }
+
+        await menu_button(
+            update=update,
+            context=context,
+            command_dict=new_menu_chat,
+            scope=BotCommandScopeAllPrivateChats()
+        )
+        await menu_button(
+            update=update,
+            context=context,
+            command_dict=new_menu_group_admin,
+            scope=BotCommandScopeAllChatAdministrators()
+        )
 
 
 async def help(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -402,7 +414,7 @@ async def private_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # words filter for groups/channels
         try:
             message_text = update.effective_message.text.lower()
-            with open('bad_words.csv', 'r', newline='', encoding='utf8') as csv_file:
+            with open('data/bad_words.csv', 'r', newline='', encoding='utf8') as csv_file:
                 csv_data = csv.reader(csv_file)
                 for bad_word in csv_data:
                     word_pattern = f'[\\W]{bad_word[0]}[\\W]|[\\W]{bad_word[0]}$|^{bad_word[0]}[\\W]|^{bad_word[0]}$'

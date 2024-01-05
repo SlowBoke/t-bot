@@ -83,7 +83,7 @@ def sheet_append(event, admin, color_dict, context=None):
         sheet_db.cur_row += 1
         sheet_db.save()
     except (RefreshError, FileNotFoundError):
-        os.remove('token.json')
+        os.remove('data/token.json')
         new_token()
         sheet_append(event, admin, color_dict, context)
 
