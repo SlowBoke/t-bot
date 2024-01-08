@@ -7,10 +7,14 @@ import asyncio
 import datetime
 import re
 
+try:
+    from settings import TOKEN, SCENARIOS, ACCEPTABLE_WARNING_QUANTITY
+except ImportError:
+    exit('Do cp settings.py.default to settings.py and set the variables.')
+
 import db
-from settings import TOKEN, SCENARIOS, ACCEPTABLE_WARNING_QUANTITY
 from private_message_handler import private_messages_handler, start_scenario, private_attachments_handler
-from sheet_record import sheet_init, sheet_append
+from sheet_record import sheet_append
 
 from telegram import (
     Update, InlineQueryResultArticle, InputTextMessageContent, BotCommand, BotCommandScopeAllPrivateChats,

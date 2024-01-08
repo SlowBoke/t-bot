@@ -84,8 +84,11 @@ def sheet_append(event, admin, color_dict, context=None):
         sheet_db.save()
     except (RefreshError, FileNotFoundError):
         os.remove('data/token.json')
+        if os.path.exists('g_sheets_start/credentials.json') is False:
+            exit('Get the credentials.json in the g_sheets_start folder then confirm the token.json generation.')
         new_token()
         sheet_append(event, admin, color_dict, context)
+
 
 def color_handler(color, color_dict, col_index):
     if color in color_dict:
