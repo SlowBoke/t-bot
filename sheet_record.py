@@ -82,8 +82,13 @@ def sheet_append(event, admin, color_dict, context=None):
 
         sheet_db.cur_row += 1
         sheet_db.save()
-    except (RefreshError, FileNotFoundError):
+    except RefreshError:
         os.remove('data/token.json')
+        if os.path.exists('g_sheets_start/credentials.json') is False:
+            exit('Get the credentials.json in the g_sheets_start folder then confirm the token.json generation.')
+        new_token()
+        sheet_append(event, admin, color_dict, context)
+    except FileNotFoundError:
         if os.path.exists('g_sheets_start/credentials.json') is False:
             exit('Get the credentials.json in the g_sheets_start folder then confirm the token.json generation.')
         new_token()
