@@ -22,6 +22,7 @@ def sheet_append(event, admin, color_dict, context=None):
     try:
         sheet_db = db.SheetInfo.select().get()
 
+        # TODO: Выставить московский часовой пояс.
         datetime_now = datetime.datetime.now().strftime('%d.%m.%Y %H:%M:%S')
         date, time = datetime_now.split(" ")
 

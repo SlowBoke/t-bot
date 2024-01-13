@@ -21,6 +21,7 @@ class UserConversation(BaseModel):
 
 
 class AdminLogin(BaseModel):
+    """Admins' info."""
     admin_name = peewee.CharField()
     login = peewee.CharField()
     password = peewee.CharField()
@@ -28,9 +29,11 @@ class AdminLogin(BaseModel):
 
 
 class GroupViolation(BaseModel):
+    """Quantity of violations per user."""
     user_id = peewee.IntegerField(unique=True)
     violation_quantity = peewee.IntegerField()
 
 
 class SheetInfo(BaseModel):
+    """Current number of Google Sheets' row."""
     cur_row = peewee.IntegerField()

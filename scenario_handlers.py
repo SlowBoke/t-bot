@@ -19,6 +19,11 @@ from telegram.ext import (filters, MessageHandler, ApplicationBuilder, ContextTy
 
 
 async def admin_receiver(user, message, user_in_db, dispatch_dict, **kwargs):
+    """
+    Function defines customer -> bot -> admin conversation.
+
+    :return: None
+    """
     text_new_task = 'Новое обращение от пользователя {user_link}:'.format(user_link=user.link)
 
     if 'admin_id' in user_in_db.context:
@@ -47,6 +52,11 @@ async def admin_receiver(user, message, user_in_db, dispatch_dict, **kwargs):
 
 
 async def connect_to_admin(user, message, user_in_db, dispatch_dict, text_new_task):
+    """
+    Function connects customer to admin by making contextual notes in the db.
+
+    :return: Model instance
+    """
     admin = db.UserConversation.select().where(
         db.UserConversation.scenario_name == 'Администратор' and
         db.UserConversation.step_name == 'step1'
@@ -54,7 +64,7 @@ async def connect_to_admin(user, message, user_in_db, dispatch_dict, text_new_ta
 
     admin_db = db.AdminLogin.select().where(db.AdminLogin.user_id == admin.user_id).get()
 
-    # TODO: разобраться с числом админов
+    # TODO: разобраться с предопределённым порядком получения админами запросов на беседу, когда админов больше одного.
     # admin = admins_ready.get()  # _list.sort(key=lambda args: random())[0]
     admin.step_name = SCENARIOS[admin.scenario_name]['steps'][admin.step_name]['next_step']
     admin.context['customer_id'] = message.chat_id
@@ -72,6 +82,11 @@ async def connect_to_admin(user, message, user_in_db, dispatch_dict, text_new_ta
 
 
 async def customer_receiver(user, message, user_in_db, dispatch_dict, **kwargs):
+    """
+    Function defines admin -> bot -> customer conversation.
+
+    :return: None
+    """
     customer_id = user_in_db.context['customer_id']
     admin_name = db.AdminLogin.select().where(db.AdminLogin.user_id == message.chat_id).get().admin_name
 
@@ -87,6 +102,11 @@ async def customer_receiver(user, message, user_in_db, dispatch_dict, **kwargs):
 
 
 async def login_handler(message, user_in_db, dispatch_dict, steps, step, **kwargs):
+    """
+    Function checking sent login as a part of authorisation.
+
+    :return: None
+    """
     try:
         db.AdminLogin.select().where(db.AdminLogin.login == message.text).get()
         dispatch_dict['text_list'] = [steps[step['next_step']]['message']]
@@ -101,6 +121,12 @@ async def login_handler(message, user_in_db, dispatch_dict, steps, step, **kwarg
 
 
 async def password_handler(message, user_in_db, dispatch_dict, step, **kwargs):
+    """
+    Function checking sent password as a part of authorisation. User gets 'administrator' scenario.
+    An entry will be made in Google Sheets in 'message_handler'.
+
+    :return: None
+    """
     admin = db.AdminLogin.select().where(db.AdminLogin.login == user_in_db.context['login']).get()
     admin_name = admin.admin_name
     new_scenario = 'Администратор'
@@ -128,6 +154,7 @@ async def password_handler(message, user_in_db, dispatch_dict, step, **kwargs):
 
 
 async def rating_handler(message, user_in_db, dispatch_dict, steps, step, **kwargs):
+    # TODO: отразить обратную связь в Гугл Таблицах.
     if message.text == '1':
         pass
         dispatch_dict['text_list'] = [step['message1']]

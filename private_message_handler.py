@@ -16,6 +16,11 @@ from telegram.ext import (filters, MessageHandler, ApplicationBuilder, ContextTy
 
 
 async def private_messages_handler(update: Update, context: ContextTypes.DEFAULT_TYPE, dispatch_dict):
+    """
+    Function evaluates user's state in the db and decides if there is scenario to continue.
+
+    :return: None
+    """
     user = update.effective_user
     message = update.message
 
@@ -41,6 +46,11 @@ async def private_messages_handler(update: Update, context: ContextTypes.DEFAULT
 
 
 def start_scenario(user, scenario_name, **kwargs):
+    """
+    Function writes in user's instance in the UserConversation db name of the chosen scenario and the first step.
+
+    :return: dict
+    """
     first_step_name = SCENARIOS[scenario_name]['first_step']
     steps = SCENARIOS[scenario_name]['steps']
     step = steps[first_step_name]
@@ -70,6 +80,12 @@ def start_scenario(user, scenario_name, **kwargs):
 
 
 async def continue_scenario(message, user_in_db, user, dispatch_dict):
+    """
+    Function runs necessary handler for the current scenario's step.
+    It also decides if scenario should be closed.
+
+    :return: None
+    """
     scenario_name = user_in_db.scenario_name
     steps = SCENARIOS[scenario_name]['steps']
     step = steps[user_in_db.step_name]
@@ -105,20 +121,15 @@ async def general_step_handler(user_id, dispatch_dict, step, scenario_name):
 
 
 async def private_attachments_handler(context: ContextTypes.DEFAULT_TYPE, attachment, receiver_id):
+    """Function distinguishes a single attachment that's type will be analysed further."""
     if type(attachment) is tuple:
-        # attach_id_set = set()
-        # attach_list = []
-        # for attach in attachment:
-        #     if attach.file_id not in attach_id_set:
-        #         attach_list.append(attach)
-        #         attach_id_set.add(attach.file_id)
-        # for attach_unique in attach_list:
         await attachment_type(context=context, attachment=attachment[0], receiver_id=receiver_id)
     else:
         await attachment_type(context=context, attachment=attachment, receiver_id=receiver_id)
 
 
 async def attachment_type(context: ContextTypes.DEFAULT_TYPE, attachment, receiver_id):
+    """Function determines attachment's type and sends it using an appropriate method."""
     if type(attachment) is telegram.PhotoSize:
         await context.bot.send_photo(chat_id=receiver_id, photo=attachment)
     elif type(attachment) is telegram.Sticker:

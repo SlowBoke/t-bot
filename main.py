@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import csv
+import os
 
 import peewee
 import telegram
@@ -34,7 +35,10 @@ def db_init():
 
     :return: None
     """
-    database = peewee.SqliteDatabase('data\\db\\db.db')
+    db_folder = os.path.normpath('data\\db')
+    if not os.path.isdir(db_folder):
+        os.mkdir(db_folder)
+    database = peewee.SqliteDatabase(os.path.join(db_folder, 'db.db'))
     db.database_proxy.initialize(database)
 
     database.create_tables([db.UserConversation, db.AdminLogin, db.GroupViolation, db.SheetInfo], safe=True)
