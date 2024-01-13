@@ -17,7 +17,7 @@ from private_message_handler import private_messages_handler, start_scenario, pr
 from sheet_record import sheet_append
 
 from telegram import (
-    Update, InlineQueryResultArticle, InputTextMessageContent, BotCommand, BotCommandScopeAllPrivateChats,
+    Update, User, Message, BotCommand, BotCommandScopeAllPrivateChats,
     BotCommandScopeChat, BotCommandScopeAllChatAdministrators, MenuButton, ChatMember, MenuButtonCommands,
     InlineKeyboardButton, InlineKeyboardMarkup, ChatPermissions
 )
@@ -29,7 +29,11 @@ from telegram.ext import (
 
 
 def db_init():
-    """Initialising the database"""
+    """
+    Initialising the database
+
+    :return: None
+    """
     database = peewee.SqliteDatabase('data\\db\\db.db')
     db.database_proxy.initialize(database)
 
@@ -49,17 +53,28 @@ def db_init():
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Command function covering the '/start'. Is used in private chats only.
+    Creates inline keyboard buttons.
+
+    :return: None
+    """
     if update.effective_chat.type == 'private':
         try:
+            # Foolproof: new scenario activation at this point
+            # will cause one-sided unclosable conversation with an admin.
             user_db = db.UserConversation.select().where(
                 (db.UserConversation.scenario_name == 'Задать вопрос') &
                 (db.UserConversation.step_name == 'step2') &
                 (db.UserConversation.user_id == update.effective_user.id)
             ).get()
-        except peewee.DoesNotExist:
-            user_db = None
 
-        if user_db is None:
+            await update.effective_user.send_message(text='Дождитесь завершения текущего диалога.')
+            await context.bot.send_message(
+                chat_id=user_db.context['admin_id'],
+                text='Бот:\nПользователь попытался вызвать комманду "/start" в текущем активном диалоге.'
+            )
+        except peewee.DoesNotExist:
             await update.effective_user.send_message(
                 text='Вас приветствует бот Телеграм-канала "НеймХолдер". Укажите, чем могу вам помочь.'
             )
@@ -71,37 +86,36 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup = InlineKeyboardMarkup(keyboard)
 
             await update.message.reply_text('Пожалуйста, выберите:', reply_markup=reply_markup)
-        else:
-            await update.effective_user.send_message(text='Дождитесь завершения текущего диалога.')
-            await context.bot.send_message(
-                chat_id=user_db.context['admin_id'],
-                text='Бот:\nПользователь попытался вызвать комманду "/start" в текущем активном диалоге.'
-            )
 
-        ### First launch menu button setup ###
 
-        new_menu_chat = {
-            'start': 'Начните отсюда, чтобы выбрать действие.',
-            'help': 'Краткое описание возможностей бота.'
-        }
-        new_menu_group_admin = {
-            'ban': 'Забанить пользователя.',
-            'warn': 'Вынести пользователю предупреждение.',
-            'delete': 'Удалить сообщение.'
-        }
+async def menu_init(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Command function covering the '/menu_init'. Should be used once for the button menu initial generation.
 
-        await menu_button(
-            update=update,
-            context=context,
-            command_dict=new_menu_chat,
-            scope=BotCommandScopeAllPrivateChats()
-        )
-        await menu_button(
-            update=update,
-            context=context,
-            command_dict=new_menu_group_admin,
-            scope=BotCommandScopeAllChatAdministrators()
-        )
+    :return: None
+    """
+    new_menu_chat = {
+        'start': 'Начните отсюда, чтобы выбрать действие.',
+        'help': 'Краткое описание возможностей бота.'
+    }
+    new_menu_group_admin = {
+        'ban': 'Забанить пользователя.',
+        'warn': 'Вынести пользователю предупреждение.',
+        'delete': 'Удалить сообщение.'
+    }
+
+    await menu_button(
+        update=update,
+        context=context,
+        command_dict=new_menu_chat,
+        scope=BotCommandScopeAllPrivateChats()
+    )
+    await menu_button(
+        update=update,
+        context=context,
+        command_dict=new_menu_group_admin,
+        scope=BotCommandScopeAllChatAdministrators()
+    )
 
 
 async def help(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -115,6 +129,14 @@ async def help(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def admin_logout(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Command function covering the '/logout'. Is used in private chats by bot's admins only.
+    Allows to log out from the bot's administrator scenario.
+    If there was an active conversation with a customer, it will be closed with the 'admin_conversation_over' function.
+    An entry will be made in Google Sheets.
+
+    :return: None
+    """
     if update.effective_chat.type == 'private':
         user = update.effective_user
 
@@ -160,6 +182,14 @@ async def admin_logout(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def admin_conversation_over(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Command function covering the '/close'. Is used in private chats by bot's admins only.
+    Closes current conversation with a customer.
+    An entry will be made in Google Sheets.
+    Command's arguments are handled as a description of the conversation and will be mentioned in Google Sheets.
+
+    :return: None
+    """
     if update.effective_chat.type == 'private':
         user = update.effective_user
 
@@ -203,55 +233,92 @@ async def admin_conversation_over(update: Update, context: ContextTypes.DEFAULT_
             
             
 async def delete_chat_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    chat_admins = await update.effective_chat.get_administrators()
-    if update.effective_user in (admin.user for admin in chat_admins):
-        await update.message.reply_to_message.delete()
-        await update.message.delete()
+    """
+    Command function covering the '/delete'.
+    Is used in groups, supergroups and channels. User should be both group's and bot's admin.
+    Deletes a message that was replied with a command.
+
+    :return: None
+    """
+    if update.effective_chat.type != 'private':
+        chat_admins = await update.effective_chat.get_administrators()
+        if update.effective_user in (admin.user for admin in chat_admins):
+            await update.message.reply_to_message.delete()
+            await update.message.delete()
 
 
 async def ban_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    chat_admins = await update.effective_chat.get_administrators()
-    if update.effective_user in (admin.user for admin in chat_admins):
-        guilty_user = update.message.reply_to_message.from_user
+    """
+    Command function covering the '/ban'.
+    Is used in groups, supergroups and channels. User should be both group's and bot's admin.
+    Bans author of the message that was replied with a command and deletes that message.
+    Author will receive private message from the bot with a notification and a copy of the deleted message.
+    An entry will be made in Google Sheets.
+    Command's arguments are handled as a description of the violation and will be mentioned in Google Sheets.
 
-        await banning_sample(update=update, guilty_user=guilty_user)
-
-        color_dict = {'r': 1}
-        admin_login = db.AdminLogin.select().where(db.AdminLogin.user_id == update.effective_user.id).get().login
-        sheet_append(
-            event='БАН',
-            admin=admin_login,
-            context=f'Юзер: {guilty_user.link}\nКомментарий: {" ".join(context.args)}',
-            color_dict=color_dict
-        )
-
-
-async def warn_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    chat_admins = await update.effective_chat.get_administrators()
-    if update.effective_user in (admin.user for admin in chat_admins):
-        try:
-            db.UserConversation.select().where(
-                db.UserConversation.user_id == update.effective_user.id
-                and db.UserConversation.scenario_name == 'Администратор'
-            ).get()
+    :return: None
+    """
+    if update.effective_chat.type != 'private':
+        chat_admins = await update.effective_chat.get_administrators()
+        if update.effective_user in (admin.user for admin in chat_admins):
             guilty_user = update.message.reply_to_message.from_user
-            guilty_message = update.message.reply_to_message
 
-            await warning_sample(update=update, guilty_user=guilty_user, guilty_message=guilty_message)
+            await banning_sample(update=update, guilty_user=guilty_user)
 
-            color_dict = {'r': 1, 'g': -125}
+            color_dict = {'r': 1}
             admin_login = db.AdminLogin.select().where(db.AdminLogin.user_id == update.effective_user.id).get().login
             sheet_append(
-                event='ПРЕДУПРЕЖДЕНИЕ',
+                event='БАН',
                 admin=admin_login,
                 context=f'Юзер: {guilty_user.link}\nКомментарий: {" ".join(context.args)}',
                 color_dict=color_dict
             )
-        except peewee.DoesNotExist:
-            pass
 
 
-async def banning_sample(update, guilty_user):
+async def warn_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Command function covering the '/warn'.
+    Is used in groups, supergroups and channels. User should be both group's and bot's admin.
+    Deletes a message that was replied with a command.
+    If the acceptable number of the violations was exceeded, auther of the message will be baned.
+    Author will receive private message from the bot with a notification and a copy of the deleted message.
+    An entry will be made in Google Sheets.
+    Command's arguments are handled as a description of the violation and will be mentioned in Google Sheets.
+
+    :return: None
+    """
+    if update.effective_chat.type != 'private':
+        chat_admins = await update.effective_chat.get_administrators()
+        if update.effective_user in (admin.user for admin in chat_admins):
+            try:
+                db.UserConversation.select().where(
+                    db.UserConversation.user_id == update.effective_user.id
+                    and db.UserConversation.scenario_name == 'Администратор'
+                ).get()
+                guilty_user = update.message.reply_to_message.from_user
+                guilty_message = update.message.reply_to_message
+
+                await warning_sample(update=update, guilty_user=guilty_user, guilty_message=guilty_message)
+
+                color_dict = {'r': 1, 'g': -125}
+                admin_login = db.AdminLogin.select().where(db.AdminLogin.user_id == update.effective_user.id).get().login
+                sheet_append(
+                    event='ПРЕДУПРЕЖДЕНИЕ',
+                    admin=admin_login,
+                    context=f'Юзер: {guilty_user.link}\nКомментарий: {" ".join(context.args)}',
+                    color_dict=color_dict
+                )
+            except peewee.DoesNotExist:
+                pass
+
+
+async def banning_sample(update: Update, guilty_user: User):
+    """
+    Function handling a banning process for the '/ban' command
+    or in case when the acceptable number of violations was exceeded.
+
+    :return: None
+    """
     await guilty_user.send_message(
         text=f'Вы были исключены из группы "НеймХолдер", Для восстановления в группе обратитесь к модератору '
              f'посредством данного бота. Причиной послужило ваше сообщение:'
@@ -268,7 +335,12 @@ async def banning_sample(update, guilty_user):
         pass
 
 
-async def warning_sample(update, guilty_user, guilty_message):
+async def warning_sample(update: Update, guilty_user: User, guilty_message: Message):
+    """
+    Function handling a warning process for the '/warn' command.
+
+    :return: None
+    """
     try:
         user_db = db.GroupViolation.select().where(db.GroupViolation.user_id == guilty_user.id).get()
         user_db.violation_quantity += 1
@@ -303,6 +375,13 @@ async def warning_sample(update, guilty_user, guilty_message):
 
 
 async def new_user_restrict(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Function handling new group members. Is used supergroups only.
+    Restricts new member from sending specific types of content for the set period of time.
+    Author will receive private message from the bot with a notification.
+
+    :return: None
+    """
     if update.effective_chat.type == 'supergroup':
         chat_member_update = update.chat_member
         status_change = chat_member_update.difference().get('status')
@@ -356,6 +435,12 @@ async def new_user_restrict(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Function handling a button updates.
+    Starts a scenario according to the user's choice.
+
+    :return: None
+    """
     if update.effective_chat.type == 'private':
         query = update.callback_query
         scenario_name = query.data
@@ -370,9 +455,17 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     await context.bot.send_message(chat_id=dispatch_dict['receiver_id'], text=text)
 
 
-async def private_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Function handling all types of messages.
+    If message type is private, it will handle the message according to the user's current scenario.
+    Else it will become a word filter for the groups, supergroups and chats.
+    Message containing forbidden words will be deleted and an entry will be made in Google Sheets.
+
+    :return: None
+    """
     if update.effective_chat.type == 'private':
-        dispatch_dict = {}
+        dispatch_dict = {}  # is used for the collection of tasks that should be done within current step.
         await private_messages_handler(update=update, context=context, dispatch_dict=dispatch_dict)
         if 'text_list' in dispatch_dict:
             for text in dispatch_dict['text_list']:
@@ -438,6 +531,7 @@ async def private_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                             color_dict=color_dict
                         )
                         break
+        # Ignoring group messages without text like photos or group updates like new member registration.
         except TypeError:
             pass
         except AttributeError:
@@ -458,6 +552,7 @@ def main():
     application = ApplicationBuilder().token(TOKEN).concurrent_updates(True).build()
 
     start_handler = CommandHandler('start', start)
+    menu_init_handler = CommandHandler('menu_init', menu_init)
     help_handler = CommandHandler('help', help)
     logout_handler = CommandHandler('logout', admin_logout)
     close_handler = CommandHandler('close', admin_conversation_over)
@@ -466,13 +561,13 @@ def main():
     delete_handler = CommandHandler('delete', delete_chat_message)
     button_handler = CallbackQueryHandler(button)
     new_member_handler = ChatMemberHandler(new_user_restrict, ChatMemberHandler.CHAT_MEMBER)
-    private_message_handler = MessageHandler((~filters.COMMAND), private_message)
+    all_message_handler = MessageHandler((~filters.COMMAND), message_handler)
 
     application.add_handlers([start_handler, help_handler, logout_handler, delete_handler,
-                              close_handler, ban_handler, warning_handler])
+                              close_handler, ban_handler, warning_handler, menu_init_handler])
     application.add_handler(button_handler)
     application.add_handler(new_member_handler)
-    application.add_handler(private_message_handler)
+    application.add_handler(all_message_handler)
 
     application.run_polling(allowed_updates=Update.ALL_TYPES)
 

@@ -14,7 +14,7 @@ from g_sheets_start.quickstart import new_token
 
 def sheet_init():
     scopes = ["https://www.googleapis.com/auth/spreadsheets"]
-    creds = Credentials.from_authorized_user_file(TOKEN_PATH, scopes)
+    creds = Credentials.from_authorized_user_file(os.path.normpath(TOKEN_PATH), scopes)
     return googleapiclient.discovery.build("sheets", "v4", credentials=creds)
 
 
@@ -83,13 +83,13 @@ def sheet_append(event, admin, color_dict, context=None):
         sheet_db.cur_row += 1
         sheet_db.save()
     except RefreshError:
-        os.remove('data/token.json')
-        if os.path.exists('g_sheets_start/credentials.json') is False:
+        os.remove(os.path.normpath('data\\token.json'))
+        if os.path.exists(os.path.normpath('g_sheets_start\\credentials.json')) is False:
             exit('Get the credentials.json in the g_sheets_start folder then confirm the token.json generation.')
         new_token()
         sheet_append(event, admin, color_dict, context)
     except FileNotFoundError:
-        if os.path.exists('g_sheets_start/credentials.json') is False:
+        if os.path.exists(os.path.normpath('g_sheets_start\\credentials.json')) is False:
             exit('Get the credentials.json in the g_sheets_start folder then confirm the token.json generation.')
         new_token()
         sheet_append(event, admin, color_dict, context)
